@@ -1,0 +1,3577 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1F3B2D">
+<title>Rodízio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<!--
+  =============================================================================
+  RODÍZIO — ARQUIVO ÚNICO (cliente + operação)
+  -----------------------------------------------------------------------------
+  • Endereço normal  ........  rodizio.html            → tela das MESAS (clientes)
+  • Com #operacao  ..........  rodizio.html#operacao   → tela da EQUIPE (Garçom + Cozinha/Gestão)
+
+  A única coisa a preencher é o firebaseConfig, no primeiro <script> abaixo.
+  ⚠ Protótipo sem autenticação: não usar assim em produção.
+  =============================================================================
+-->
+</head>
+<body>
+
+<!-- ============================ TELA DAS MESAS ============================ -->
+<template id="tpl-cliente">
+<style>
+/* =========================================================================
+   TOKENS VISUAIS
+   ========================================================================= */
+:root{
+  --forno:#1F3B2D;          /* verde-oliva profundo: marca, barras */
+  --forno-2:#2C5140;
+  --manjericao:#3F7D4E;     /* confirmação, disponível */
+  --tomate:#E0452B;         /* ação principal: PEDIR */
+  --tomate-esc:#B9331C;
+  --mussarela:#F6D77A;      /* destaque: acabou de sair, mesa */
+  --pedra:#E8ECE5;          /* fundo */
+  --papel:#FFFFFF;
+  --tinta:#18211B;
+  --tinta-2:#55615A;
+  --linha:#D3DAD1;
+  --prato:#F2F4EF;
+  --prato-borda:#C9D1C6;
+
+  --fonte-display:'Bricolage Grotesque', ui-rounded, 'Segoe UI', system-ui, sans-serif;
+  --fonte-texto:'Figtree', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+
+  --raio-card:18px;
+  --raio-ctrl:12px;
+  --raio-painel:26px;
+  --barra-h:68px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{height:100%;-webkit-text-size-adjust:100%}
+body{
+  min-height:100%;
+  background:var(--pedra);
+  color:var(--tinta);
+  font-family:var(--fonte-texto);
+  font-size:16px;
+  line-height:1.45;
+  -webkit-tap-highlight-color:transparent;
+  padding-bottom:calc(var(--barra-h) + env(safe-area-inset-bottom,0px) + 12px);
+}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer;touch-action:manipulation}
+button:disabled{cursor:not-allowed}
+:focus-visible{outline:3px solid var(--mussarela);outline-offset:2px;border-radius:8px}
+[hidden]{display:none !important}
+
+/* =========================================================================
+   TOPO
+   ========================================================================= */
+.topo{
+  background:var(--forno);
+  color:#fff;
+  padding-top:env(safe-area-inset-top,0px);
+  position:sticky;top:0;z-index:20;
+}
+.topo-inner{
+  max-width:1120px;margin:0 auto;
+  display:flex;align-items:center;gap:12px;
+  padding:10px clamp(12px,3vw,24px);
+}
+.marca{display:flex;align-items:center;gap:10px;min-width:0;flex:1}
+.marca-icone{width:34px;height:34px;flex:0 0 auto}
+.marca-nome{font-family:var(--fonte-display);font-weight:800;font-size:clamp(17px,2.4vw,21px);letter-spacing:-.01em;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.conexao{display:flex;align-items:center;gap:6px;font-size:12px;color:rgba(255,255,255,.75);margin-top:2px}
+.conexao i{width:8px;height:8px;border-radius:50%;background:#9AA69F;display:inline-block}
+.conexao[data-estado="on"] i{background:#6FD08A;box-shadow:0 0 0 3px rgba(111,208,138,.22)}
+.conexao[data-estado="off"] i{background:#F2B347;animation:pisca 1.2s infinite}
+@keyframes pisca{50%{opacity:.3}}
+
+.topo-dir{display:flex;align-items:center;gap:8px}
+.mesa{display:flex;flex-direction:column;align-items:center;gap:1px}
+.mesa-badge{
+  background:var(--mussarela);color:var(--forno);
+  font-family:var(--fonte-display);font-weight:700;font-size:15px;
+  padding:5px 14px;border-radius:999px;line-height:1.2;white-space:nowrap;
+}
+.mesa-badge b{font-weight:800;font-size:21px;letter-spacing:-.02em;margin-left:2px}
+.trocar{font-size:11px;color:rgba(255,255,255,.62);text-decoration:underline;text-underline-offset:2px;padding:2px 4px}
+.icone-btn{
+  position:relative;width:44px;height:44px;border-radius:50%;
+  background:var(--forno-2);color:#fff;font-size:19px;font-weight:700;
+  display:grid;place-items:center;flex:0 0 auto;
+}
+.icone-btn .ponto{position:absolute;top:7px;right:7px;width:10px;height:10px;border-radius:50%;background:var(--tomate);border:2px solid var(--forno-2)}
+
+/* =========================================================================
+   CONTEÚDO
+   ========================================================================= */
+.conteudo{max-width:1120px;margin:0 auto;padding:14px clamp(10px,3vw,24px) 0}
+
+/* Para sua mesa */
+.recs{margin-bottom:14px}
+.recs-topo{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:8px}
+.recs h2{font-family:var(--fonte-display);font-weight:800;font-size:clamp(18px,2.4vw,22px);letter-spacing:-.01em}
+.link{font-size:13px;color:var(--tinta-2);text-decoration:underline;text-underline-offset:2px;padding:4px}
+.recs-lista{display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x proximity;padding-bottom:4px;scrollbar-width:none}
+.recs-lista::-webkit-scrollbar{display:none}
+.rec{
+  flex:0 0 auto;scroll-snap-align:start;
+  display:flex;align-items:center;gap:10px;
+  background:var(--forno);color:#fff;border-radius:16px;
+  padding:7px 8px 7px 7px;min-width:236px;max-width:290px;text-align:left;
+}
+.rec-img{width:54px;height:54px;flex:0 0 auto;background:rgba(255,255,255,.08);border-radius:12px;display:grid;place-items:center}
+.rec-img svg{width:50px;height:50px}
+.rec-txt{flex:1;min-width:0}
+.rec-nome{font-weight:700;font-size:14px;line-height:1.2;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rec-motivo{font-size:12px;color:var(--mussarela);display:block;margin-top:2px}
+.rec-pedir{background:var(--tomate);color:#fff;font-weight:800;font-size:13px;letter-spacing:.03em;padding:9px 12px;border-radius:10px;flex:0 0 auto}
+.recs-vazio{font-size:14px;color:var(--tinta-2);padding:6px 0}
+
+/* Abas de categoria */
+.abas{
+  display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;
+  background:var(--papel);border:1px solid var(--linha);border-radius:16px;padding:5px;margin-bottom:12px;
+}
+.aba{
+  border-radius:12px;padding:8px 4px;display:flex;flex-direction:column;align-items:center;gap:1px;
+  font-weight:700;font-size:13px;color:var(--tinta-2);line-height:1.15;text-align:center;
+}
+.aba .aba-emoji{font-size:22px;line-height:1}
+.aba[aria-selected="true"]{background:var(--forno);color:#fff}
+@media (min-width:640px){
+  .aba{flex-direction:row;justify-content:center;gap:8px;font-size:15px;padding:11px 8px}
+}
+
+/* Páginas de produtos: 3 colunas × 2 linhas */
+.cardapio{position:relative}
+.pager{
+  display:flex;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;
+  scrollbar-width:none;overscroll-behavior-x:contain;scroll-behavior:auto;
+}
+.pager::-webkit-scrollbar{display:none}
+.pagina{
+  flex:0 0 100%;scroll-snap-align:start;scroll-snap-stop:always;
+  display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:repeat(2,auto);
+  gap:clamp(8px,1.6vw,16px);padding:2px;
+}
+.card{
+  background:var(--papel);border:1px solid var(--linha);border-radius:var(--raio-card);
+  padding:clamp(8px,1.4vw,14px);display:flex;flex-direction:column;gap:5px;min-width:0;position:relative;
+}
+.card-img{position:relative;height:clamp(84px,min(19vw,19vh),158px);display:grid;place-items:center;margin-bottom:2px}
+.card-img svg{height:100%;width:auto;max-width:100%;transition:filter .3s,opacity .3s}
+.card.esgotado .card-img svg{filter:grayscale(1);opacity:.32}
+.selo{
+  position:absolute;left:-2px;top:0;
+  background:var(--mussarela);color:var(--forno);
+  font-weight:800;font-size:clamp(9px,1.2vw,12px);letter-spacing:.02em;
+  padding:3px 7px;border-radius:8px;transform:rotate(-4deg);white-space:nowrap;
+  box-shadow:0 2px 0 rgba(31,59,45,.18);
+}
+.card-nome{
+  font-family:var(--fonte-display);font-weight:700;font-size:clamp(13px,1.7vw,17px);line-height:1.2;letter-spacing:-.005em;
+  min-height:2.4em;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+}
+.card-disp{font-size:clamp(11.5px,1.4vw,14px);color:var(--tinta-2);line-height:1.25;min-height:2.5em}
+.card-disp.ok{color:var(--manjericao);font-weight:600}
+.card-disp.ok b{font-size:1.25em;font-weight:800}
+.card-disp.esg{color:var(--tinta-2);font-weight:800;font-size:clamp(10px,1.2vw,12.5px);letter-spacing:.01em}
+.btn-pedir{
+  margin-top:auto;min-height:44px;border-radius:var(--raio-ctrl);
+  background:var(--tomate);color:#fff;font-weight:800;font-size:clamp(13px,1.6vw,16px);letter-spacing:.05em;
+  padding:6px 4px;line-height:1.1;
+  transition:transform .08s, background .15s;
+}
+.btn-pedir:active{transform:scale(.97);background:var(--tomate-esc)}
+.btn-pedir.sec{background:var(--forno);font-size:clamp(11px,1.35vw,14px);letter-spacing:.02em}
+.btn-pedir:disabled{background:#CDD3CB;color:#6F7A72}
+.btn-naorec{font-size:clamp(10.5px,1.25vw,12.5px);color:var(--tinta-2);padding:4px 2px 0;line-height:1.2}
+.btn-naorec.on{color:var(--forno);font-weight:700}
+
+.pager-nav{display:flex;align-items:center;justify-content:center;gap:14px;padding:12px 0 4px}
+.seta{width:44px;height:44px;border-radius:50%;background:var(--papel);border:1px solid var(--linha);font-size:26px;line-height:1;color:var(--forno);display:grid;place-items:center;padding-bottom:3px}
+.seta:disabled{opacity:.35}
+.dots{display:flex;gap:8px}
+.dot{width:10px;height:10px;border-radius:999px;background:#BFC8BD;transition:width .2s,background .2s;padding:0}
+.dot[aria-current="true"]{width:28px;background:var(--forno)}
+.pagina-rotulo{font-size:12px;color:var(--tinta-2);text-align:center;margin-top:2px}
+
+/* Pizza SVG */
+.prato{fill:var(--prato);stroke:var(--prato-borda);stroke-width:1.5}
+.fatia-vazia{fill:var(--prato);stroke:var(--prato-borda);stroke-width:1.4;stroke-dasharray:4 4}
+
+/* =========================================================================
+   BARRA FIXA: MEUS PEDIDOS
+   ========================================================================= */
+.barra{
+  position:fixed;left:0;right:0;bottom:0;z-index:25;
+  background:var(--forno);padding:8px clamp(10px,3vw,24px) calc(8px + env(safe-area-inset-bottom,0px));
+}
+.barra-btn{
+  max-width:1120px;margin:0 auto;width:100%;min-height:52px;
+  display:flex;align-items:center;gap:12px;color:#fff;text-align:left;
+  background:var(--forno-2);border-radius:14px;padding:6px 14px;
+}
+.barra-ic{font-size:22px}
+.barra-txt{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.2}
+.barra-txt strong{font-family:var(--fonte-display);font-size:17px;font-weight:800}
+.barra-txt span{font-size:13px;color:rgba(255,255,255,.72);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.barra-badge{background:var(--tomate);color:#fff;font-weight:800;min-width:28px;height:28px;border-radius:999px;display:grid;place-items:center;padding:0 8px;font-size:14px}
+.barra-abrir{font-weight:800;color:var(--mussarela);font-size:14px}
+
+/* =========================================================================
+   CAMADAS (telas sobrepostas)
+   ========================================================================= */
+.camada{
+  position:fixed;inset:0;z-index:50;background:rgba(16,28,21,.58);
+  display:flex;align-items:flex-end;justify-content:center;
+  animation:aparecer .18s ease-out;
+}
+@keyframes aparecer{from{opacity:0}}
+.painel{
+  background:var(--papel);width:100%;max-width:640px;max-height:92vh;overflow:auto;
+  border-radius:var(--raio-painel) var(--raio-painel) 0 0;
+  padding:22px clamp(16px,4vw,28px) calc(20px + env(safe-area-inset-bottom,0px));
+  animation:subir .22s cubic-bezier(.2,.8,.2,1);
+}
+@keyframes subir{from{transform:translateY(40px);opacity:.4}}
+@media (min-width:720px){
+  .camada{align-items:center}
+  .painel{border-radius:var(--raio-painel);padding-bottom:24px}
+}
+.painel h2{font-family:var(--fonte-display);font-weight:800;font-size:clamp(22px,3.4vw,28px);letter-spacing:-.015em;line-height:1.15}
+.painel .sub{color:var(--tinta-2);margin-top:4px}
+.fechar{position:absolute;right:14px;top:14px;width:40px;height:40px;border-radius:50%;background:var(--pedra);font-size:20px;display:grid;place-items:center}
+.painel-rel{position:relative}
+
+.btn-primario{
+  width:100%;min-height:56px;border-radius:14px;background:var(--tomate);color:#fff;
+  font-weight:800;font-size:18px;letter-spacing:.04em;padding:10px 16px;
+}
+.btn-primario:disabled{background:#CDD3CB;color:#6F7A72}
+.btn-sec{min-height:56px;border-radius:14px;background:var(--pedra);font-weight:700;font-size:16px;padding:10px 18px}
+
+/* Seleção de mesa */
+.tela-mesa{background:var(--forno);align-items:center;overflow:auto;padding:24px 16px}
+.mesa-box{width:100%;max-width:560px;color:#fff;text-align:center}
+.mesa-box .marca-grande{display:flex;align-items:center;justify-content:center;gap:10px;font-family:var(--fonte-display);font-weight:800;font-size:22px;margin-bottom:26px;color:var(--mussarela)}
+.mesa-box h1{font-family:var(--fonte-display);font-weight:800;font-size:clamp(30px,6vw,42px);letter-spacing:-.02em;line-height:1.1}
+.mesa-box p{color:rgba(255,255,255,.75);margin-top:8px}
+.mesas-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:26px}
+.mesa-op{
+  aspect-ratio:1;border-radius:18px;background:var(--forno-2);color:#fff;
+  font-family:var(--fonte-display);font-weight:800;font-size:clamp(22px,5vw,32px);
+  border:2px solid transparent;
+}
+.mesa-op:active{background:var(--mussarela);color:var(--forno)}
+.mesa-op[aria-current="true"]{border-color:var(--mussarela)}
+.mesa-voltar{margin-top:20px;color:rgba(255,255,255,.8);text-decoration:underline;padding:8px}
+
+/* Como funciona */
+.passos{list-style:none;margin:18px 0 14px;display:grid;gap:12px;counter-reset:p}
+.passos li{display:flex;gap:14px;align-items:flex-start;font-size:17px;font-weight:600;line-height:1.35}
+.passos li::before{
+  counter-increment:p;content:counter(p);
+  flex:0 0 34px;height:34px;border-radius:50%;background:var(--forno);color:var(--mussarela);
+  font-family:var(--fonte-display);font-weight:800;display:grid;place-items:center;font-size:17px;
+}
+.nota{background:#FFF6D9;border-radius:14px;padding:12px 14px;font-size:15px;margin-bottom:18px}
+
+/* Folha de quantidade */
+.qtd-cabeca{display:flex;align-items:center;gap:14px;padding-right:44px}
+.qtd-img{width:84px;height:84px;flex:0 0 auto}
+.qtd-img svg{width:100%;height:100%}
+.qtd-cat{font-size:13px;color:var(--tinta-2);font-weight:600}
+.qtd-info{margin:16px 0 10px;font-size:15px;color:var(--tinta-2)}
+.qtd-info b{color:var(--manjericao)}
+.qtd-pergunta{font-weight:800;font-size:17px;margin-bottom:10px}
+.chips{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+@media (min-width:480px){.chips{grid-template-columns:repeat(8,1fr)}}
+.chips.poucos{grid-template-columns:repeat(6,1fr)}
+.chip{
+  min-height:52px;border-radius:12px;background:var(--pedra);border:2px solid transparent;
+  font-family:var(--fonte-display);font-weight:800;font-size:21px;
+}
+.chip[aria-pressed="true"]{background:var(--forno);color:#fff}
+.chip:disabled{opacity:.28;text-decoration:line-through}
+.aviso{margin-top:12px;background:#FFE9E3;color:#8E2A17;border-radius:12px;padding:10px 12px;font-weight:700;font-size:15px}
+.aviso.bom{background:#E2F2E5;color:#23592F}
+.qtd-acoes{display:flex;gap:10px;margin-top:18px}
+.qtd-acoes .btn-sec{flex:0 0 auto}
+.qtd-acoes .btn-primario{flex:1}
+
+/* Meus pedidos */
+.pedidos-grupo{margin-top:18px}
+.pedidos-grupo h3{font-size:14px;font-weight:800;color:var(--tinta-2);margin-bottom:8px}
+.pedido{display:grid;grid-template-columns:auto 1fr auto;gap:4px 12px;align-items:center;padding:12px 0;border-top:1px solid var(--linha)}
+.pedido-emoji{font-size:28px;grid-row:span 2}
+.pedido-nome{font-weight:700;line-height:1.2}
+.pedido-qtd{font-size:14px;color:var(--tinta-2)}
+.pedido-status{justify-self:end;font-weight:800;font-size:11.5px;letter-spacing:.03em;padding:4px 9px;border-radius:999px;white-space:nowrap}
+.pedido-dica{grid-column:2 / span 2;font-size:13px;color:var(--tinta-2)}
+.pedido-acao{grid-column:2 / span 2;display:flex;justify-content:flex-start}
+.btn-cancelar{font-size:14px;font-weight:700;color:var(--tomate-esc);padding:6px 0}
+.btn-cancelar.confirmar{background:var(--tomate);color:#fff;padding:7px 12px;border-radius:10px}
+.st-SOLICITADO{background:#E1EBF6;color:#23507D}
+.st-EM_ATENDIMENTO{background:#FCEBC0;color:#7A5200}
+.st-ATENDIDO{background:#DDF0E1;color:#23592F}
+.st-AGUARDANDO_REPOSICAO{background:#ECE4F6;color:#5B3F8A}
+.st-CANCELADO{background:#ECEEEA;color:#6A736D}
+.vazio{text-align:center;padding:26px 8px;color:var(--tinta-2)}
+.vazio strong{display:block;color:var(--tinta);font-size:17px;margin-bottom:4px}
+
+/* Atividade */
+.lateral{justify-content:flex-end;align-items:stretch}
+.lateral .painel{max-width:420px;max-height:none;height:100%;border-radius:var(--raio-painel) 0 0 var(--raio-painel);animation:lado .22s cubic-bezier(.2,.8,.2,1);padding-top:calc(22px + env(safe-area-inset-top,0px))}
+@keyframes lado{from{transform:translateX(40px);opacity:.4}}
+.feed{list-style:none;margin-top:16px}
+.feed li{display:flex;gap:12px;padding:12px 0;border-top:1px solid var(--linha);align-items:flex-start}
+.feed .f-emoji{font-size:24px;line-height:1.1}
+.feed .f-txt{flex:1;font-weight:600;line-height:1.3}
+.feed .f-hora{display:block;font-weight:400;font-size:13px;color:var(--tinta-2);margin-top:2px}
+
+/* Confirmação e prioridade */
+.centro{align-items:center;padding:20px}
+.confirma{
+  background:var(--papel);border-radius:28px;padding:30px 26px 26px;max-width:380px;width:100%;text-align:center;
+  animation:pop .28s cubic-bezier(.2,1.4,.4,1);
+}
+@keyframes pop{from{transform:scale(.85);opacity:0}}
+.confirma .selo-ok{width:76px;height:76px;border-radius:50%;background:var(--manjericao);color:#fff;font-size:42px;font-weight:800;display:grid;place-items:center;margin:0 auto 14px}
+.confirma h2{font-family:var(--fonte-display);font-weight:800;font-size:26px;letter-spacing:-.015em}
+.confirma p{margin-top:8px;font-size:17px;color:var(--tinta-2)}
+.confirma p b{color:var(--tinta)}
+.confirma.fogo{background:var(--forno);color:#fff}
+.confirma.fogo .selo-ok{background:var(--mussarela);color:var(--forno)}
+.confirma.fogo p{color:rgba(255,255,255,.85)}
+.confirma.fogo p b{color:#fff}
+.confirma .btn-primario{margin-top:18px}
+
+/* Aviso de configuração pendente */
+.tela-config{background:var(--forno);align-items:center;color:#fff;text-align:center;padding:24px}
+.tela-config .box{max-width:440px}
+.tela-config h1{font-family:var(--fonte-display);font-weight:800;font-size:28px;margin:14px 0 8px}
+.tela-config p{color:rgba(255,255,255,.8)}
+.tela-config small{display:block;margin-top:18px;color:rgba(255,255,255,.5);font-size:12px}
+
+/* Toasts */
+.toasts{
+  position:fixed;left:0;right:0;z-index:70;pointer-events:none;
+  bottom:calc(var(--barra-h) + env(safe-area-inset-bottom,0px) + 14px);
+  display:flex;flex-direction:column;align-items:center;gap:8px;padding:0 12px;
+}
+.toast{
+  pointer-events:auto;background:var(--tinta);color:#fff;border-radius:14px;padding:12px 14px;
+  max-width:520px;width:100%;display:flex;align-items:center;gap:12px;font-weight:600;font-size:15px;
+  box-shadow:0 10px 28px rgba(16,28,21,.28);animation:subir .2s ease-out;
+}
+.toast span{flex:1}
+.toast button{color:var(--mussarela);font-weight:800;padding:4px 6px}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none !important;transition:none !important}
+}
+</style>
+
+
+<!-- =========================================================================
+     TOPO
+     ========================================================================= -->
+<header class="topo">
+  <div class="topo-inner">
+    <div class="marca">
+      <svg class="marca-icone" viewBox="0 0 40 40" aria-hidden="true">
+        <path d="M20 4 L36 34 Q20 40 4 34 Z" fill="#F6D77A"/>
+        <path d="M4 34 Q20 40 36 34 L34.4 31 Q20 36.6 5.6 31 Z" fill="#D38C45"/>
+        <circle cx="19" cy="18" r="3" fill="#E0452B"/><circle cx="14" cy="27" r="3" fill="#E0452B"/><circle cx="25" cy="28" r="3" fill="#E0452B"/>
+      </svg>
+      <div style="min-width:0">
+        <div class="marca-nome" id="marcaNome">Rodízio</div>
+        <div class="conexao" id="conexao" data-estado="conectando" aria-live="polite"><i></i><span>Conectando…</span></div>
+      </div>
+    </div>
+    <div class="topo-dir">
+      <div class="mesa">
+        <div class="mesa-badge" id="mesaBadge">Mesa <b id="mesaNum">--</b></div>
+        <button class="trocar" id="btnTrocarMesa" type="button">trocar mesa</button>
+      </div>
+      <button class="icone-btn" id="btnAtividade" type="button" aria-label="Atividade do rodízio" title="Atividade do rodízio">💬<span class="ponto" id="pontoAtividade" hidden></span></button>
+      <button class="icone-btn" id="btnAjuda" type="button" aria-label="Como funciona" title="Como funciona">?</button>
+    </div>
+  </div>
+</header>
+
+<!-- =========================================================================
+     CONTEÚDO PRINCIPAL
+     ========================================================================= -->
+<main class="conteudo">
+  <section class="recs" id="recs" aria-labelledby="recsTitulo">
+    <div class="recs-topo">
+      <h2 id="recsTitulo">✨ Para sua mesa</h2>
+      <button class="link" id="btnRestaurar" type="button" hidden></button>
+    </div>
+    <div class="recs-lista" id="recsLista"></div>
+  </section>
+
+  <nav class="abas" id="abas" role="tablist" aria-label="Categorias do cardápio"></nav>
+
+  <section class="cardapio" aria-label="Produtos">
+    <div class="pager" id="pager"></div>
+    <div class="pager-nav">
+      <button class="seta" id="pgAnt" type="button" aria-label="Página anterior">‹</button>
+      <div class="dots" id="dots"></div>
+      <button class="seta" id="pgProx" type="button" aria-label="Próxima página">›</button>
+    </div>
+    <p class="pagina-rotulo" id="paginaRotulo">Arraste para o lado para ver mais</p>
+  </section>
+</main>
+
+<div class="barra">
+  <button class="barra-btn" id="btnPedidos" type="button">
+    <span class="barra-ic" aria-hidden="true">🧾</span>
+    <span class="barra-txt"><strong>Meus pedidos</strong><span id="barraResumo">Nenhum pedido ainda</span></span>
+    <span class="barra-badge" id="barraBadge" hidden>0</span>
+    <span class="barra-abrir">Ver</span>
+  </button>
+</div>
+
+<!-- =========================================================================
+     CAMADAS
+     ========================================================================= -->
+
+<!-- Seleção de mesa -->
+<div class="camada tela-mesa" id="telaMesa" hidden role="dialog" aria-modal="true" aria-labelledby="telaMesaTitulo">
+  <div class="mesa-box">
+    <div class="marca-grande" id="marcaGrande">🍕 Rodízio</div>
+    <h1 id="telaMesaTitulo">Em qual mesa você está?</h1>
+    <p>Toque no número da sua mesa.</p>
+    <div class="mesas-grid" id="mesasGrid"></div>
+    <button class="mesa-voltar" id="mesaVoltar" type="button" hidden>Voltar ao cardápio</button>
+  </div>
+</div>
+
+<!-- Como funciona -->
+<div class="camada" id="telaComo" hidden role="dialog" aria-modal="true" aria-labelledby="comoTitulo">
+  <div class="painel painel-rel">
+    <h2 id="comoTitulo">Como funciona</h2>
+    <ol class="passos">
+      <li>Escolha o que você gostaria de receber.</li>
+      <li>Escolha a quantidade.</li>
+      <li>Toque em PEDIR.</li>
+      <li>O garçom verá sua solicitação e realizará o atendimento.</li>
+    </ol>
+    <p class="nota">Pedir significa avisar ao garçom que sua mesa gostaria de receber esse produto.</p>
+    <button class="btn-primario" id="comoOk" type="button">ENTENDI</button>
+  </div>
+</div>
+
+<!-- Quantidade -->
+<div class="camada" id="telaQtd" hidden role="dialog" aria-modal="true" aria-labelledby="qtdNome">
+  <div class="painel painel-rel">
+    <button class="fechar" type="button" data-fechar="telaQtd" aria-label="Fechar">✕</button>
+    <div class="qtd-cabeca">
+      <div class="qtd-img" id="qtdImg"></div>
+      <div>
+        <div class="qtd-cat" id="qtdCat"></div>
+        <h2 id="qtdNome"></h2>
+      </div>
+    </div>
+    <p class="qtd-info" id="qtdInfo"></p>
+    <p class="qtd-pergunta" id="qtdPergunta"></p>
+    <div class="chips" id="qtdChips"></div>
+    <p class="aviso" id="qtdAviso" hidden></p>
+    <div class="qtd-acoes">
+      <button class="btn-sec" type="button" data-fechar="telaQtd">Voltar</button>
+      <button class="btn-primario" id="qtdConfirmar" type="button">PEDIR</button>
+    </div>
+  </div>
+</div>
+
+<!-- Meus pedidos -->
+<div class="camada" id="telaPedidos" hidden role="dialog" aria-modal="true" aria-labelledby="pedidosTitulo">
+  <div class="painel painel-rel">
+    <button class="fechar" type="button" data-fechar="telaPedidos" aria-label="Fechar">✕</button>
+    <h2 id="pedidosTitulo">Meus pedidos</h2>
+    <p class="sub" id="pedidosSub"></p>
+    <div id="pedidosLista"></div>
+  </div>
+</div>
+
+<!-- Atividade do rodízio -->
+<div class="camada lateral" id="telaAtividade" hidden role="dialog" aria-modal="true" aria-labelledby="atividadeTitulo">
+  <div class="painel painel-rel">
+    <button class="fechar" type="button" data-fechar="telaAtividade" aria-label="Fechar">✕</button>
+    <h2 id="atividadeTitulo">Atividade do rodízio</h2>
+    <p class="sub">O que está acontecendo no salão agora.</p>
+    <ul class="feed" id="feed"></ul>
+  </div>
+</div>
+
+<!-- Confirmar troca de mesa -->
+<div class="camada centro" id="telaTrocar" hidden role="dialog" aria-modal="true" aria-labelledby="trocarTitulo">
+  <div class="confirma">
+    <h2 id="trocarTitulo">Trocar de mesa?</h2>
+    <p id="trocarTexto">Os pedidos já feitos continuam registrados na mesa atual.</p>
+    <button class="btn-primario" id="trocarSim" type="button">ESCOLHER OUTRA MESA</button>
+    <button class="btn-sec" style="width:100%;margin-top:10px" type="button" data-fechar="telaTrocar">Continuar nesta mesa</button>
+  </div>
+</div>
+
+<!-- Confirmação de pedido / prioridade -->
+<div class="camada centro" id="telaOk" hidden role="alertdialog" aria-modal="true" aria-labelledby="okTitulo">
+  <div class="confirma" id="okCaixa">
+    <div class="selo-ok" id="okIcone">✓</div>
+    <h2 id="okTitulo">Solicitação registrada</h2>
+    <p id="okTexto"></p>
+    <button class="btn-primario" id="okFechar" type="button">OK</button>
+  </div>
+</div>
+
+<!-- Configuração pendente (somente quando o firebaseConfig não foi preenchido) -->
+<div class="camada tela-config" id="telaConfig" hidden>
+  <div class="box">
+    <div style="font-size:54px">🍕</div>
+    <h1>Cardápio em preparação</h1>
+    <p>O cardápio digital desta mesa ainda está sendo preparado. Por favor, chame um atendente.</p>
+    <small>Configuração pendente</small>
+  </div>
+</div>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<noscript><p style="padding:20px">Ative o JavaScript para usar o cardápio da mesa.</p></noscript>
+
+</template>
+
+<!-- ============================ TELA DA EQUIPE ============================ -->
+<template id="tpl-operacao">
+<style>
+/* =========================================================================
+   TOKENS VISUAIS (mesma identidade do cliente.html)
+   ========================================================================= */
+:root{
+  --forno:#1F3B2D; --forno-2:#2C5140; --forno-3:#3A6350;
+  --manjericao:#3F7D4E; --tomate:#E0452B; --tomate-esc:#B9331C; --mussarela:#F6D77A;
+  --pedra:#E8ECE5; --papel:#FFFFFF; --tinta:#18211B; --tinta-2:#55615A; --linha:#D3DAD1;
+
+  --c-sol:#E07B1F;      /* SOLICITADO: laranja */
+  --c-sol-bg:#FDEBD8;
+  --c-em:#2F6FB0;       /* EM ATENDIMENTO: azul */
+  --c-em-bg:#E1ECF7;
+  --c-ok:#3F7D4E;       /* ATENDIDO */
+  --c-ok-bg:#DDF0E1;
+  --c-agu:#6B4C9A;      /* AGUARDANDO REPOSIÇÃO */
+  --c-agu-bg:#ECE4F6;
+  --c-can:#6A736D;
+  --c-can-bg:#ECEEEA;
+
+  --fonte-display:'Bricolage Grotesque', ui-rounded, 'Segoe UI', system-ui, sans-serif;
+  --fonte-texto:'Figtree', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{background:var(--pedra);color:var(--tinta);font-family:var(--fonte-texto);font-size:15px;line-height:1.4;min-height:100vh;-webkit-tap-highlight-color:transparent}
+button,select{font:inherit;color:inherit;border:0;background:none;cursor:pointer;touch-action:manipulation}
+button:disabled{cursor:not-allowed;opacity:.55}
+:focus-visible{outline:3px solid var(--mussarela);outline-offset:2px;border-radius:8px}
+[hidden]{display:none !important}
+.num{font-variant-numeric:tabular-nums}
+
+/* =========================================================================
+   TOPO
+   ========================================================================= */
+.topo{background:var(--forno);color:#fff;position:sticky;top:0;z-index:30;padding-top:env(safe-area-inset-top,0px)}
+.topo-inner{max-width:1480px;margin:0 auto;padding:10px clamp(12px,2.4vw,28px);display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.marca{display:flex;align-items:center;gap:10px;margin-right:auto}
+.marca svg{width:32px;height:32px}
+.marca b{font-family:var(--fonte-display);font-weight:800;font-size:19px;letter-spacing:-.01em;display:block;line-height:1.1}
+.marca small{font-size:12px;color:rgba(255,255,255,.65)}
+.modos{display:flex;background:var(--forno-2);border-radius:14px;padding:4px;gap:4px;order:3;width:100%}
+@media (min-width:860px){.modos{order:0;width:auto}}
+.modo{flex:1;padding:10px 18px;border-radius:10px;font-weight:800;font-size:15px;color:rgba(255,255,255,.75);white-space:nowrap;display:flex;align-items:center;justify-content:center;gap:8px}
+.modo[aria-selected="true"]{background:var(--mussarela);color:var(--forno)}
+.modo .qtd-badge{background:var(--tomate);color:#fff;border-radius:999px;font-size:12px;min-width:22px;height:22px;display:inline-grid;place-items:center;padding:0 6px}
+.topo-dir{display:flex;align-items:center;gap:8px}
+.conexao{display:flex;align-items:center;gap:6px;font-size:13px;color:rgba(255,255,255,.8);padding:0 6px}
+.conexao i{width:9px;height:9px;border-radius:50%;background:#9AA69F;display:inline-block}
+.conexao[data-estado="on"] i{background:#6FD08A;box-shadow:0 0 0 3px rgba(111,208,138,.22)}
+.conexao[data-estado="off"] i{background:#F2B347;animation:pisca 1.2s infinite}
+@keyframes pisca{50%{opacity:.3}}
+.relogio{font-family:var(--fonte-display);font-weight:700;font-size:17px;color:var(--mussarela);padding:0 4px}
+.btn-topo{height:40px;padding:0 12px;border-radius:12px;background:var(--forno-2);color:#fff;font-weight:700;font-size:14px;display:flex;align-items:center;gap:6px}
+.btn-topo[aria-pressed="true"]{background:var(--forno-3);box-shadow:inset 0 0 0 2px var(--mussarela)}
+
+.conteudo{max-width:1480px;margin:0 auto;padding:16px clamp(12px,2.4vw,28px) 40px}
+
+/* =========================================================================
+   MODO GARÇOM
+   ========================================================================= */
+.resumo{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:14px}
+.res{background:var(--papel);border:1px solid var(--linha);border-radius:16px;padding:12px 14px;display:flex;align-items:center;gap:12px}
+.res b{font-family:var(--fonte-display);font-weight:800;font-size:clamp(26px,3.4vw,36px);line-height:1}
+.res span{font-weight:700;color:var(--tinta-2);font-size:14px;line-height:1.2}
+.res.sol{border-left:6px solid var(--c-sol)} .res.em{border-left:6px solid var(--c-em)} .res.agu{border-left:6px solid var(--c-agu)}
+
+.ferramentas{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:16px}
+.seg{display:flex;background:var(--papel);border:1px solid var(--linha);border-radius:12px;padding:3px}
+.seg button{padding:8px 14px;border-radius:9px;font-weight:700;font-size:14px;color:var(--tinta-2)}
+.seg button[aria-pressed="true"]{background:var(--forno);color:#fff}
+.filtros{display:flex;gap:6px;flex-wrap:wrap}
+.filtro{padding:8px 12px;border-radius:999px;background:var(--papel);border:1px solid var(--linha);font-weight:700;font-size:14px;color:var(--tinta-2)}
+.filtro[aria-pressed="true"]{background:var(--tinta);border-color:var(--tinta);color:#fff}
+
+.bloco{margin-bottom:22px}
+.bloco-cab{display:flex;align-items:baseline;gap:10px;margin-bottom:10px}
+.bloco-cab h2{font-family:var(--fonte-display);font-weight:800;font-size:clamp(19px,2.2vw,23px);letter-spacing:-.01em}
+.bloco-cab .cont{font-weight:800;color:var(--tinta-2)}
+.bloco.prio{background:#FFF4D6;border:2px solid var(--mussarela);border-radius:20px;padding:14px}
+.bloco.prio .bloco-cab h2{color:#8A3A10}
+
+.tickets{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+.ticket{
+  display:grid;grid-template-columns:96px 1fr;background:var(--papel);border:1px solid var(--linha);
+  border-radius:16px;overflow:hidden;min-height:150px;position:relative;
+}
+.ticket-mesa{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;color:#fff;background:var(--c-sol);padding:10px 4px;text-align:center}
+.ticket-mesa small{font-weight:800;font-size:12px;letter-spacing:.08em;opacity:.9}
+.ticket-mesa b{font-family:var(--fonte-display);font-weight:800;font-size:44px;line-height:1;letter-spacing:-.03em}
+.ticket.st-EM_ATENDIMENTO .ticket-mesa{background:var(--c-em)}
+.ticket.st-AGUARDANDO_REPOSICAO .ticket-mesa{background:var(--c-agu)}
+.ticket.st-ATENDIDO .ticket-mesa{background:var(--c-ok)}
+.ticket.prioridade .ticket-mesa{background:var(--tomate)}
+.ticket-corpo{padding:10px 12px 12px;display:flex;flex-direction:column;gap:3px;min-width:0}
+.ticket-topo{display:flex;justify-content:space-between;gap:8px;font-size:12.5px;color:var(--tinta-2);font-weight:600}
+.espera.medio{color:#A15C00;font-weight:800}
+.espera.alto{color:var(--tomate-esc);font-weight:800}
+.ticket h3{font-family:var(--fonte-display);font-weight:700;font-size:18px;line-height:1.2;letter-spacing:-.005em}
+.ticket-qtd{font-family:var(--fonte-display);font-weight:800;font-size:24px;letter-spacing:-.01em;line-height:1.1}
+.ticket-prio{font-weight:800;font-size:12.5px;color:var(--tomate-esc)}
+.ticket-acoes{display:flex;align-items:center;gap:10px;margin-top:auto;padding-top:8px}
+.acao{flex:1;min-height:46px;border-radius:12px;font-weight:800;font-size:15px;letter-spacing:.04em;color:#fff;background:var(--c-sol);padding:6px 10px}
+.acao.concluir{background:var(--c-em)}
+.acao:active{transform:scale(.98)}
+.cancelar-adm{font-size:13px;font-weight:700;color:var(--tinta-2);text-decoration:underline;text-underline-offset:2px;padding:6px 2px;white-space:nowrap}
+.cancelar-adm.confirmar{background:var(--tomate);color:#fff;text-decoration:none;border-radius:10px;padding:8px 10px}
+.ticket.novo{animation:chegou 1.2s ease-out 2}
+@keyframes chegou{0%{box-shadow:0 0 0 0 rgba(224,69,43,.55)}100%{box-shadow:0 0 0 14px rgba(224,69,43,0)}}
+
+.chip{display:inline-block;font-weight:800;font-size:11.5px;letter-spacing:.03em;padding:3px 9px;border-radius:999px;white-space:nowrap}
+.chip.st-SOLICITADO{background:var(--c-sol-bg);color:#8A4A08}
+.chip.st-EM_ATENDIMENTO{background:var(--c-em-bg);color:#1F4F80}
+.chip.st-ATENDIDO{background:var(--c-ok-bg);color:#23592F}
+.chip.st-AGUARDANDO_REPOSICAO{background:var(--c-agu-bg);color:#523879}
+.chip.st-CANCELADO{background:var(--c-can-bg);color:var(--c-can)}
+
+/* Aguardando reposição agrupado */
+.aguarda{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;margin-top:12px}
+.ag-grupo{background:var(--papel);border:1px dashed #B79CE0;border-radius:14px;padding:10px 12px}
+.ag-cab{display:flex;justify-content:space-between;align-items:center;gap:8px;font-weight:800;margin-bottom:6px}
+.ag-linha{display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--linha);flex-wrap:wrap}
+.ag-linha b{font-family:var(--fonte-display);font-size:17px}
+.ag-linha .seta{color:var(--tinta-2)}
+.ag-linha .dir{margin-left:auto;display:flex;align-items:center;gap:8px}
+.tag{font-weight:800;font-size:11.5px;letter-spacing:.03em;padding:3px 8px;border-radius:8px;white-space:nowrap}
+.tag.esg{background:#2B2F2C;color:#fff}
+.tag.fogo{background:var(--mussarela);color:#7A3200}
+.tag.pouca{background:#FDE3C3;color:#8A4A08}
+.tag.livre{background:var(--c-ok-bg);color:#23592F}
+
+.recentes{background:var(--papel);border:1px solid var(--linha);border-radius:16px;padding:4px 14px}
+.recentes li{list-style:none;display:flex;gap:10px;align-items:center;padding:9px 0;border-top:1px solid var(--linha);font-size:14px}
+.recentes li:first-child{border-top:0}
+.recentes .hora{color:var(--tinta-2);font-weight:700;min-width:44px}
+
+.vazio{background:var(--papel);border:1px dashed var(--linha);border-radius:16px;padding:28px 16px;text-align:center;color:var(--tinta-2)}
+.vazio strong{display:block;color:var(--tinta);font-size:17px;margin-bottom:4px;font-family:var(--fonte-display)}
+
+/* Visão por produto */
+.grupos{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px}
+.grupo{background:var(--papel);border:1px solid var(--linha);border-radius:18px;overflow:hidden;display:flex;flex-direction:column}
+.grupo.tem-prio{border:2px solid var(--tomate)}
+.grupo-cab{padding:12px 14px;border-bottom:1px solid var(--linha);display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.grupo-cab h3{font-family:var(--fonte-display);font-weight:800;font-size:17px;letter-spacing:.01em;text-transform:uppercase;line-height:1.2}
+.grupo-total{font-family:var(--fonte-display);font-weight:800;font-size:22px;margin-top:2px}
+.grupo-total span{font-size:15px;color:var(--tinta-2);font-weight:700}
+.grupo ul{list-style:none;padding:4px 14px}
+.linha-g{display:flex;align-items:center;gap:8px;padding:9px 0;border-top:1px solid var(--linha);flex-wrap:wrap}
+.linha-g:first-child{border-top:0}
+.linha-g .mesa-g{font-family:var(--fonte-display);font-weight:800;font-size:17px;min-width:76px}
+.linha-g .qtd-g{font-weight:800}
+.linha-g .dir{margin-left:auto;display:flex;align-items:center;gap:8px}
+.mini{min-height:36px;padding:4px 12px;border-radius:10px;font-weight:800;font-size:13px;letter-spacing:.03em;color:#fff;background:var(--c-sol)}
+.mini.concluir{background:var(--c-em)}
+.grupo-rodape{margin-top:auto;display:flex;gap:8px;padding:10px 14px 14px;flex-wrap:wrap}
+.grupo-rodape .acao{min-height:42px;font-size:14px}
+
+/* =========================================================================
+   MODO COZINHA / GESTÃO
+   ========================================================================= */
+.kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-bottom:16px}
+@media (max-width:900px){.kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:520px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.kpi{background:var(--papel);border:1px solid var(--linha);border-radius:16px;padding:12px 14px}
+.kpi h3{font-size:13px;font-weight:800;color:var(--tinta-2);letter-spacing:.02em}
+.kpi b{display:block;font-family:var(--fonte-display);font-weight:800;font-size:clamp(28px,3.4vw,40px);line-height:1.05;margin-top:4px}
+.kpi small{color:var(--tinta-2);font-size:12.5px}
+.kpi.alerta{background:#2B2F2C;color:#fff;border-color:#2B2F2C}
+.kpi.alerta h3,.kpi.alerta small{color:rgba(255,255,255,.7)}
+
+.gest{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:1100px){.gest{grid-template-columns:1fr}}
+.card-g{background:var(--papel);border:1px solid var(--linha);border-radius:18px;padding:14px 16px;margin-bottom:16px}
+.card-g>h2{font-family:var(--fonte-display);font-weight:800;font-size:19px;letter-spacing:-.01em;margin-bottom:10px;display:flex;align-items:baseline;gap:8px}
+.card-g>h2 small{font-family:var(--fonte-texto);font-weight:600;font-size:13px;color:var(--tinta-2)}
+.card-g h3.sub{font-size:13px;font-weight:800;color:var(--tinta-2);margin:12px 0 8px;letter-spacing:.02em}
+.legenda{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;color:var(--tinta-2);font-weight:600}
+.legenda i{display:inline-block;width:12px;height:8px;border-radius:2px;margin-right:5px;vertical-align:middle}
+
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.tile{border:1px solid var(--linha);border-radius:12px;padding:9px 10px;background:#FBFCFA;display:flex;flex-direction:column;gap:5px;min-width:0}
+.tile-nome{font-weight:700;font-size:13.5px;line-height:1.2;min-height:2.4em;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.tile-num{display:flex;align-items:baseline;gap:4px}
+.tile-num b{font-family:var(--fonte-display);font-weight:800;font-size:24px;line-height:1}
+.tile-num span{font-size:12px;color:var(--tinta-2);font-weight:600}
+.fatias{display:grid;grid-template-columns:repeat(8,1fr);gap:2px}
+.fatias i{height:7px;border-radius:2px;background:#DCE2DA}
+.fatias i.l{background:var(--manjericao)}
+.fatias i.r{background:var(--c-sol)}
+.tile .tag{align-self:flex-start}
+.tile.esgotada{background:#2B2F2C;border-color:#2B2F2C;color:#fff}
+.tile.esgotada .tile-num span{color:rgba(255,255,255,.7)}
+.tile.esgotada .fatias i{background:#4A504C}
+.tile.poucas{border-color:#F0B67A;background:#FFF7EE}
+.tile.reposta{border-color:var(--mussarela);background:#FFFAE8;box-shadow:inset 0 0 0 1px var(--mussarela)}
+
+.lista-s{list-style:none}
+.lista-s li{display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px solid var(--linha);font-size:14px}
+.lista-s li:first-child{border-top:0}
+.lista-s .dir{margin-left:auto;font-weight:800;white-space:nowrap}
+.lista-s .dir small{font-weight:600;color:var(--tinta-2)}
+.lista-vazia{color:var(--tinta-2);font-size:14px;padding:4px 0}
+
+.barra-h{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;align-items:center;padding:6px 0}
+.barra-h .rot{font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.barra-h .val{font-weight:800;font-size:14px;white-space:nowrap}
+.barra-h .val small{font-weight:600;color:var(--tinta-2)}
+.barra-h .trilho{grid-column:1 / -1;height:8px;background:#E4E9E2;border-radius:999px;overflow:hidden}
+.barra-h .trilho i{display:block;height:100%;background:var(--tomate);border-radius:999px}
+.barra-h.cat .trilho i{background:var(--forno)}
+
+.mesas{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
+@media (min-width:1300px){.mesas{grid-template-columns:repeat(8,minmax(0,1fr))}}
+.mesa-c{border:1px solid var(--linha);border-radius:12px;padding:8px;text-align:left;background:#FBFCFA;display:flex;flex-direction:column;gap:2px}
+.mesa-c b{font-family:var(--fonte-display);font-weight:800;font-size:20px;line-height:1}
+.mesa-c span{font-size:12px;color:var(--tinta-2);font-weight:600}
+.mesa-c .on{display:inline-block;width:8px;height:8px;border-radius:50%;background:#C3CBC0;margin-right:4px}
+.mesa-c.online .on{background:#3FB866}
+.mesa-c.ativa{border-color:var(--c-sol);background:#FFF6EC}
+
+.feed{list-style:none;max-height:560px;overflow:auto}
+.feed li{display:grid;grid-template-columns:48px 22px 1fr;gap:6px;padding:8px 0;border-top:1px solid var(--linha);font-size:14px;align-items:start}
+.feed li:first-child{border-top:0}
+.feed .hora{font-weight:800;color:var(--tinta-2)}
+
+/* =========================================================================
+   CAMADAS
+   ========================================================================= */
+.camada{position:fixed;inset:0;z-index:60;background:rgba(16,28,21,.55);display:flex;align-items:center;justify-content:center;padding:16px;animation:aparecer .15s ease-out}
+@keyframes aparecer{from{opacity:0}}
+.dialogo{background:var(--papel);border-radius:22px;padding:22px;max-width:460px;width:100%;max-height:90vh;overflow:auto;position:relative}
+.dialogo h2{font-family:var(--fonte-display);font-weight:800;font-size:22px;letter-spacing:-.01em;margin-bottom:6px;padding-right:40px}
+.dialogo p{color:var(--tinta-2)}
+.dialogo .botoes{display:flex;gap:10px;margin-top:18px}
+.btn{min-height:48px;border-radius:12px;padding:8px 16px;font-weight:800;font-size:15px;background:var(--pedra)}
+.btn.prim{background:var(--forno);color:#fff;flex:1}
+.btn.perigo{background:var(--tomate);color:#fff;flex:1}
+.fechar{position:absolute;right:14px;top:14px;width:38px;height:38px;border-radius:50%;background:var(--pedra);font-size:18px;display:grid;place-items:center}
+
+.gaveta{justify-content:flex-end;align-items:stretch;padding:0}
+.gaveta .dialogo{border-radius:22px 0 0 22px;max-width:420px;max-height:none;height:100%;padding-top:calc(22px + env(safe-area-inset-top,0px))}
+.demo-sec{border-top:1px solid var(--linha);padding:16px 0}
+.demo-sec:first-of-type{border-top:0}
+.demo-sec h3{font-size:14px;font-weight:800;margin-bottom:6px}
+.demo-sec p{font-size:13.5px;margin-bottom:10px}
+.demo-sec select{width:100%;min-height:46px;border:1px solid var(--linha);border-radius:12px;padding:0 12px;background:#fff;margin-bottom:8px}
+.demo-sec .btn{width:100%}
+.aviso-demo{background:#FFF4D6;border-radius:12px;padding:10px 12px;font-size:13px;color:#6A4A00;margin-top:8px}
+
+.toasts{position:fixed;right:16px;bottom:16px;z-index:80;display:flex;flex-direction:column;gap:8px;align-items:flex-end;max-width:min(440px,calc(100vw - 32px));pointer-events:none}
+.toast{pointer-events:auto;background:var(--tinta);color:#fff;border-radius:14px;padding:12px 14px;display:flex;gap:12px;align-items:center;font-weight:600;box-shadow:0 10px 28px rgba(16,28,21,.28);animation:entra .2s ease-out}
+@keyframes entra{from{transform:translateY(10px);opacity:0}}
+.toast span{flex:1}
+.toast button{color:var(--mussarela);font-weight:800;padding:4px 6px}
+
+.tela-config{background:var(--forno);color:#fff;text-align:center}
+.tela-config .box{max-width:460px}
+.tela-config h1{font-family:var(--fonte-display);font-weight:800;font-size:28px;margin:12px 0 8px}
+.tela-config p{color:rgba(255,255,255,.8)}
+.tela-config code{background:var(--forno-2);padding:2px 6px;border-radius:6px}
+
+@media (max-width:600px){
+  .resumo{gap:6px}
+  .res{padding:10px;flex-direction:column;align-items:flex-start;gap:4px}
+  .tickets{grid-template-columns:1fr}
+  .grupos{grid-template-columns:1fr}
+  .ticket{grid-template-columns:78px 1fr}
+  .ticket-mesa b{font-size:36px}
+  .relogio{display:none}
+}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none !important;transition:none !important}}
+</style>
+
+
+<header class="topo">
+  <div class="topo-inner">
+    <div class="marca">
+      <svg viewBox="0 0 40 40" aria-hidden="true">
+        <path d="M20 4 L36 34 Q20 40 4 34 Z" fill="#F6D77A"/>
+        <path d="M4 34 Q20 40 36 34 L34.4 31 Q20 36.6 5.6 31 Z" fill="#D38C45"/>
+        <circle cx="19" cy="18" r="3" fill="#E0452B"/><circle cx="14" cy="27" r="3" fill="#E0452B"/><circle cx="25" cy="28" r="3" fill="#E0452B"/>
+      </svg>
+      <div><b id="marcaNome">Rodízio</b><small>Operação da equipe</small></div>
+    </div>
+    <nav class="modos" role="tablist" aria-label="Ambiente">
+      <button class="modo" role="tab" type="button" data-modo="garcom" aria-selected="true">🛎️ Garçom <span class="qtd-badge num" id="badgeGarcom" hidden>0</span></button>
+      <button class="modo" role="tab" type="button" data-modo="gestao" aria-selected="false">👨‍🍳 Cozinha / Gestão</button>
+    </nav>
+    <div class="topo-dir">
+      <span class="conexao" id="conexao" data-estado="conectando" aria-live="polite"><i></i><span>Conectando…</span></span>
+      <span class="relogio num" id="relogio">--:--</span>
+      <button class="btn-topo" id="btnSom" type="button" aria-pressed="false" title="Aviso sonoro para novas solicitações">🔕 Som</button>
+      <button class="btn-topo" id="btnDemo" type="button" title="Área de demonstração">⚙︎ Demonstração</button>
+    </div>
+  </div>
+</header>
+
+<main class="conteudo">
+  <!-- ===================== MODO GARÇOM ===================== -->
+  <section id="modoGarcom" aria-label="Modo garçom">
+    <div class="resumo">
+      <div class="res sol"><b class="num" id="resSol">0</b><span>A atender</span></div>
+      <div class="res em"><b class="num" id="resEm">0</b><span>Em atendimento</span></div>
+      <div class="res agu"><b class="num" id="resAgu">0</b><span>Aguardando reposição</span></div>
+    </div>
+    <div class="ferramentas">
+      <div class="seg" role="group" aria-label="Forma de visualizar">
+        <button type="button" data-visao="pedido" aria-pressed="true">Por pedido</button>
+        <button type="button" data-visao="produto" aria-pressed="false">Por produto</button>
+      </div>
+      <div class="filtros" id="filtros" role="group" aria-label="Filtrar por categoria"></div>
+    </div>
+    <div id="garcomConteudo"></div>
+  </section>
+
+  <!-- ===================== MODO COZINHA / GESTÃO ===================== -->
+  <section id="modoGestao" aria-label="Modo cozinha e gestão" hidden>
+    <div class="kpis" id="kpis"></div>
+    <div class="gest">
+      <div>
+        <section class="card-g">
+          <h2>Situação das pizzas <small id="pizzasResumo"></small></h2>
+          <div class="legenda"><span><i style="background:var(--manjericao)"></i>Livres para novas solicitações</span><span><i style="background:var(--c-sol)"></i>Reservadas para mesas</span><span><i style="background:#DCE2DA"></i>Já servidas</span></div>
+          <h3 class="sub">🍕 PIZZAS SALGADAS</h3>
+          <div class="tiles" id="tilesSalgadas"></div>
+          <h3 class="sub">🍫 PIZZAS DOCES</h3>
+          <div class="tiles" id="tilesDoces"></div>
+        </section>
+        <section class="card-g">
+          <h2>Mesas <small>Toque em uma mesa para ver detalhes</small></h2>
+          <div class="mesas" id="mesasGrid"></div>
+        </section>
+      </div>
+      <div>
+        <section class="card-g">
+          <h2>Esgotadas</h2>
+          <ul class="lista-s" id="listaEsgotadas"></ul>
+          <h3 class="sub">POUCAS FATIAS</h3>
+          <ul class="lista-s" id="listaPoucas"></ul>
+          <h3 class="sub">🔥 REPOSTAS RECENTEMENTE</h3>
+          <ul class="lista-s" id="listaRepostas"></ul>
+        </section>
+        <section class="card-g">
+          <h2>🔥 Mais solicitados</h2>
+          <div id="maisSolicitados"></div>
+        </section>
+        <section class="card-g">
+          <h2>Demanda por categoria</h2>
+          <div id="porCategoria"></div>
+        </section>
+        <section class="card-g">
+          <h2>Atividade do rodízio</h2>
+          <ul class="feed" id="feed"></ul>
+        </section>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- Área de demonstração -->
+<div class="camada gaveta" id="telaDemo" hidden role="dialog" aria-modal="true" aria-labelledby="demoTitulo">
+  <div class="dialogo">
+    <button class="fechar" type="button" data-fechar="telaDemo" aria-label="Fechar">✕</button>
+    <h2 id="demoTitulo">Área de demonstração</h2>
+    <p>Recursos para testes e apresentações. Não fazem parte da operação normal.</p>
+    <div class="demo-sec">
+      <h3>Endereços</h3>
+      <p>Mesas (clientes): <b id="linkCliente"></b><br>Equipe (esta tela): <b id="linkOperacao"></b></p>
+    </div>
+    <div class="demo-sec">
+      <h3>Conexão</h3>
+      <p id="demoConexao"></p>
+    </div>
+    <div class="demo-sec">
+      <h3>Repor uma pizza agora</h3>
+      <p>Coloca uma pizza nova (8 fatias). As mesas aguardando essa pizza são atendidas primeiro.</p>
+      <select id="demoPizza" aria-label="Pizza"></select>
+      <button class="btn prim" id="demoRepor" type="button">Repor pizza selecionada</button>
+    </div>
+    <div class="demo-sec">
+      <h3>Limpar pedidos de teste</h3>
+      <p>Apaga todas as solicitações, devolve as fatias (todas as pizzas voltam a 8) e zera as estatísticas. Cardápio e mesas continuam.</p>
+      <button class="btn perigo" id="demoLimpar" type="button">Limpar pedidos</button>
+    </div>
+    <div class="demo-sec">
+      <h3>Reiniciar demonstração</h3>
+      <p>Faz tudo o que "Limpar pedidos" faz e também apaga a atividade, as preferências "Não recomendar" e libera todas as mesas.</p>
+      <button class="btn perigo" id="demoReiniciar" type="button">Reiniciar tudo</button>
+      <div class="aviso-demo">⚠ Essas duas ações apagam dados de todos os dispositivos conectados. Use apenas em testes.</div>
+    </div>
+  </div>
+</div>
+
+<!-- Detalhes da mesa -->
+<div class="camada" id="telaMesa" hidden role="dialog" aria-modal="true" aria-labelledby="mesaTitulo">
+  <div class="dialogo">
+    <button class="fechar" type="button" data-fechar="telaMesa" aria-label="Fechar">✕</button>
+    <h2 id="mesaTitulo">Mesa</h2>
+    <p id="mesaInfo"></p>
+    <ul class="lista-s" id="mesaPedidos" style="margin-top:10px"></ul>
+    <div class="botoes"><button class="btn prim" id="mesaLiberar" type="button">Liberar mesa para novos clientes</button></div>
+  </div>
+</div>
+
+<!-- Confirmação genérica -->
+<div class="camada" id="telaConfirma" hidden role="alertdialog" aria-modal="true" aria-labelledby="confTitulo">
+  <div class="dialogo">
+    <h2 id="confTitulo"></h2>
+    <p id="confTexto"></p>
+    <div class="botoes">
+      <button class="btn" id="confNao" type="button">Voltar</button>
+      <button class="btn perigo" id="confSim" type="button">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Configuração pendente -->
+<div class="camada tela-config" id="telaConfig" hidden>
+  <div class="box">
+    <div style="font-size:50px">⚙︎</div>
+    <h1>Configuração pendente</h1>
+    <p>Preencha o <code>firebaseConfig</code> no início do script do <code>operacao.html</code> com os mesmos dados usados no <code>cliente.html</code>.</p>
+  </div>
+</div>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+</template>
+
+<script type="module">
+/* ############################################################################
+   ###   COLE AQUI OS DADOS DO SEU PROJETO FIREBASE (única alteração necessária)
+   ###   Console do Firebase > Configurações do projeto > Seus apps > App da Web
+   ############################################################################ */
+const firebaseConfig = {
+  apiKey: "AIzaSyC4xmFRKPbBsLKZDmAkjfkbGIlz2L2yxQo",
+  authDomain: "sisrod-1803.firebaseapp.com",
+  databaseURL: "https://sisrod-1803-default-rtdb.firebaseio.com",
+  projectId: "sisrod-1803",
+  storageBucket: "sisrod-1803.firebasestorage.app",
+  messagingSenderId: "673422850142",
+  appId: "1:673422850142:web:3dd02a602538db60b19ccf",
+  measurementId: "G-0K4Y478KH2"
+};
+/* ############################################################################ */
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {
+  getDatabase, ref, onValue, runTransaction, push, set, update, get, remove,
+  query, orderByChild, equalTo, limitToLast, serverTimestamp, onDisconnect
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+/* ---------------------------------------------------------------------------
+   Escolha da tela: #operacao (ou ?modo=operacao) abre a equipe; o resto abre as mesas.
+   --------------------------------------------------------------------------- */
+const MODO_OPERACAO = location.hash.replace("#", "").toLowerCase() === "operacao"
+  || new URLSearchParams(location.search).get("modo") === "operacao";
+window.addEventListener("hashchange", () => location.reload());
+
+/* ===========================================================================
+   APLICAÇÃO DAS MESAS (cliente)
+   =========================================================================== */
+function appCliente() {
+
+  /* ============================================================================
+     cliente.html — Interface do CLIENTE (mesas) do protótipo de rodízio
+     ----------------------------------------------------------------------------
+     Arquitetura:  vários cliente.html  <->  Firebase Realtime Database  <->  operacao.html
+
+     ⚠ PROTÓTIPO: usa o Realtime Database sem autenticação (regras abertas).
+       Essa configuração NÃO é adequada para produção.
+     ============================================================================ */
+
+  /* ============================================================================
+     1) CONFIGURAÇÃO DO FIREBASE  —  COLE AQUI OS DADOS DO SEU PROJETO
+     (Console do Firebase > Configurações do projeto > Seus apps > App da Web)
+     O mesmo firebaseConfig deve ser usado no operacao.html.
+     ============================================================================ */
+  /* firebaseConfig: definido UMA vez no topo do arquivo */
+
+  /* Nome exibido no topo (opcional) */
+  const NOME_RESTAURANTE = "Rodízio";
+
+
+  /* ============================================================================
+     2) ESTRUTURA DE DADOS NO REALTIME DATABASE (contrato com o operacao.html)
+     ----------------------------------------------------------------------------
+     Tudo fica sob o nó raiz  /rodizio
+
+     /rodizio/config
+         versaoCatalogo    : number   versão do catálogo gravado
+         fatiasPorPizza    : 8
+         reposicaoMs       : 60000    tempo interno para repor uma pizza zerada
+         totalMesas        : 15
+
+     /rodizio/categorias/{categoriaId}          categoriaId: salgadas | doces | bebidas | diversos
+         { id, nome, emoji, ordem, controlaEstoque:boolean, unidade:'fatia'|'unidade'|'porcao' }
+
+     /rodizio/produtos/{produtoId}              72 produtos, IDs estáveis (ex.: "sal_calabresa_cebola")
+         { id, nome, categoria, ordem, controlaEstoque:boolean, emoji }
+
+     /rodizio/estoque/{produtoId}               SOMENTE pizzas (salgadas e doces)
+         produtoId     : string
+         capacidade    : 8               fatias por pizza
+         disponivel    : number          fatias livres para NOVAS solicitações (nunca < 0)
+         ciclo         : number          nº da pizza atual (incrementa a cada reposição)
+         zeradoEm      : timestamp|null  quando chegou a 0 (base do cronômetro interno)
+         repostoEm     : timestamp|null  quando a última pizza foi reposta
+         atualizadoEm  : timestamp
+         reservas/{solicitacaoId} : { mesaId, quantidade, ciclo, reservadoEm, prioridade? }
+              fatias já destinadas a uma mesa (SOLICITADO / EM_ATENDIMENTO)
+         fila/{solicitacaoId}     : { mesaId, quantidade, criadoEm }
+              mesas aguardando a próxima pizza (AGUARDANDO_REPOSICAO).
+              Soma da fila ≤ capacidade. Na reposição, a fila é atendida
+              primeiro, em ordem de chegada (prioridade), e só depois as
+              fatias restantes ficam em "disponivel".
+
+         Toda alteração deste nó DEVE usar runTransaction() para evitar
+         estoque negativo e reservas duplicadas.
+
+     /rodizio/solicitacoes/{solicitacaoId}      solicitacaoId = chave push()
+         id, mesaId ("mesa_07"), mesaNumero (7),
+         produtoId, produtoNome, categoria, emoji,
+         quantidade, unidade ('fatia'|'unidade'|'porcao'),
+         controlaEstoque : boolean
+         status          : SOLICITADO | EM_ATENDIMENTO | ATENDIDO | AGUARDANDO_REPOSICAO | CANCELADO
+         prioridade      : boolean   true quando veio da fila após reposição
+         cicloEstoque    : number|null
+         origem          : 'cliente'
+         sessaoId        : identificador aleatório do dispositivo
+         criadoEm, atualizadoEm, atualizadoPor ('cliente'|'sistema'|'operacao')
+         liberadoEm      : quando saiu da fila (prioridade)
+         canceladoEm, canceladoPor ('cliente'|'operacao'), canceladoSessaoId
+         historico/{chave}: { status, em, por }
+
+     /rodizio/mesas/{mesaId}                    mesaId: mesa_01 … mesa_15
+         numero, rotulo ("Mesa 07")
+         inicioAtendimento : timestamp  pedidos anteriores a isto não aparecem em "Meus pedidos"
+                                        (o operacao.html pode atualizar ao liberar a mesa)
+         ultimaAtividadeEm : timestamp
+         dispositivos/{sessaoId}: { conectadoEm, tipo:'cliente' }  (presença; removido ao desconectar)
+
+     /rodizio/preferencias/{mesaId}/naoRecomendar/{produtoId} : true
+         "Não recomendar" é individual por mesa.
+
+     /rodizio/estatisticas/{produtoId}
+         total, quantidadeTotal, ultimaSolicitacaoEm,
+         janelaInicio, janelaContagem, popularAvisadoEm   (janela de 15 min p/ "bastante solicitada")
+
+     /rodizio/atividade/{chave}                 feed público, sem dados de mesas
+         { tipo:'popular'|'reposta'|'voltou', produtoId, produtoNome, categoria, emoji, texto, criadoEm }
+
+     ----------------------------------------------------------------------------
+     O QUE O operacao.html DEVE FAZER (para manter a mesma estrutura):
+     • Ouvir /rodizio/solicitacoes (ex.: orderByChild('status')).
+     • SOLICITADO -> EM_ATENDIMENTO -> ATENDIDO: atualizar status, atualizadoEm,
+       atualizadoPor:'operacao' e acrescentar em historico.
+     • Ao marcar ATENDIDO: remover /estoque/{produtoId}/reservas/{id}
+       (as fatias foram entregues; "disponivel" NÃO muda). O cliente também
+       faz essa limpeza de forma idempotente.
+     • Ao CANCELAR pela equipe: gravar status CANCELADO e canceladoPor:'operacao'
+       e liberar o estoque com a MESMA lógica de liberarEstoque() deste arquivo
+       (transação: devolve fatias do mesmo ciclo, atende a fila primeiro).
+     • Reposição: a lógica reporPizza() deste arquivo pode ser copiada; ela é
+       idempotente (transação), então vários dispositivos podem executá-la.
+     ============================================================================ */
+
+  const RAIZ = "rodizio";
+  const VERSAO_CATALOGO = 1;
+  const FATIAS_POR_PIZZA = 8;
+  const REPOSICAO_MS = 60_000;             // interno: NUNCA exibido ao cliente
+  const DESTAQUE_REPOSTA_MS = 2 * 60_000;  // quanto tempo o selo "acabou de sair" aparece
+  const JANELA_POPULAR_MS = 15 * 60_000;
+  const LIMIAR_POPULAR = 3;                // nº de pedidos na janela para "bastante solicitada"
+  const TOTAL_MESAS = 15;
+
+  const STATUS = {
+    SOLICITADO: "SOLICITADO",
+    EM_ATENDIMENTO: "EM_ATENDIMENTO",
+    ATENDIDO: "ATENDIDO",
+    AGUARDANDO_REPOSICAO: "AGUARDANDO_REPOSICAO",
+    CANCELADO: "CANCELADO"
+  };
+  const STATUS_ROTULO = {
+    SOLICITADO: "SOLICITADO",
+    EM_ATENDIMENTO: "EM ATENDIMENTO",
+    ATENDIDO: "ATENDIDO",
+    AGUARDANDO_REPOSICAO: "AGUARDANDO REPOSIÇÃO",
+    CANCELADO: "CANCELADO"
+  };
+  const STATUS_ATIVOS = [STATUS.SOLICITADO, STATUS.EM_ATENDIMENTO, STATUS.AGUARDANDO_REPOSICAO];
+  const CANCELAVEIS = [STATUS.SOLICITADO, STATUS.AGUARDANDO_REPOSICAO];
+
+  /* ============================================================================
+     3) CATÁLOGO (IDs estáveis — não alterar depois que o sistema estiver em uso)
+     ============================================================================ */
+  const CATEGORIAS = [
+    { id: "salgadas", nome: "Pizzas salgadas", curto: "Salgadas", emoji: "🍕", ordem: 1, controlaEstoque: true,
+      unidade: { id: "fatia", s: "fatia", p: "fatias" } },
+    { id: "doces", nome: "Pizzas doces", curto: "Doces", emoji: "🍫", ordem: 2, controlaEstoque: true,
+      unidade: { id: "fatia", s: "fatia", p: "fatias" } },
+    { id: "bebidas", nome: "Bebidas", curto: "Bebidas", emoji: "🥤", ordem: 3, controlaEstoque: false, maxQtd: 6,
+      unidade: { id: "unidade", s: "unidade", p: "unidades" } },
+    { id: "diversos", nome: "Diversos", curto: "Diversos", emoji: "🍝", ordem: 4, controlaEstoque: false, maxQtd: 4,
+      unidade: { id: "porcao", s: "porção", p: "porções" } }
+  ];
+  const CAT = Object.fromEntries(CATEGORIAS.map(c => [c.id, c]));
+
+  /* Cores usadas nas ilustrações */
+  const QJ = "#F5CF63", CH = "#5C3420", CB = "#F3E7CF", DL = "#C4854A", NU = "#4A2A1B", BAN = "#F2D38A";
+  const PRESUNTO = "#E8A0A0", BACON = "#9E4430", FRANGO = "#E2B47C", CATUPIRY = "#FFF7E6", CEBOLA = "#F7F0DF",
+        AZEITONA = "#2E2A26", OREGANO = "#5E7F2F", TOMATE = "#D8412C", MANJ = "#3C8A3F", RODELA_BANANA = "#F7E3A2",
+        MORANGO = "#D9344A";
+
+  /* Pizzas: [id, nome, visual{base, tops:[[forma, cor, quantidade]]}] */
+  const SALGADAS = [
+    ["sal_calabresa_cebola", "Calabresa com cebola", { base: QJ, tops: [["rodela", "#A63A28", 9], ["anel", CEBOLA, 6]] }],
+    ["sal_mussarela", "Mussarela", { base: QJ, tops: [["pingo", OREGANO, 16], ["azeitona", AZEITONA, 4]] }],
+    ["sal_presunto_queijo", "Presunto e queijo", { base: QJ, tops: [["cubo", PRESUNTO, 13], ["pingo", OREGANO, 6]] }],
+    ["sal_frango_catupiry", "Frango com catupiry", { base: QJ, tops: [["lasca", FRANGO, 12], ["bolha", CATUPIRY, 6]] }],
+    ["sal_portuguesa", "Portuguesa", { base: QJ, tops: [["cubo", PRESUNTO, 6], ["ovo", "#FFFFFF", 3], ["anel", CEBOLA, 4], ["pingo", "#6FA53A", 7], ["azeitona", AZEITONA, 3]] }],
+    ["sal_marguerita", "Marguerita", { base: "#F8E3A0", tops: [["rodela", TOMATE, 6], ["folha", MANJ, 7]] }],
+    ["sal_quatro_queijos", "Quatro queijos", { base: QJ, tops: [["bolha", "#FFF6D8", 5], ["bolha", "#E8B23C", 5], ["bolha", "#C9D2C3", 4]] }],
+    ["sal_bacon", "Bacon", { base: QJ, tops: [["cubo", BACON, 15]] }],
+    ["sal_pepperoni", "Pepperoni", { base: QJ, tops: [["rodela", "#C33A24", 12]] }],
+    ["sal_carne_seca_catupiry", "Carne seca com catupiry", { base: QJ, tops: [["lasca", "#7B3B26", 12], ["bolha", CATUPIRY, 5]] }],
+    ["sal_frango_bacon", "Frango com bacon", { base: QJ, tops: [["lasca", FRANGO, 9], ["cubo", BACON, 8]] }],
+    ["sal_milho_bacon", "Milho com bacon", { base: QJ, tops: [["pingo", "#F5CE2E", 20], ["cubo", BACON, 7]] }],
+    ["sal_napolitana", "Napolitana", { base: QJ, tops: [["rodela", TOMATE, 6], ["pingo", "#F4EBD0", 12], ["folha", MANJ, 3]] }],
+    ["sal_atum_cebola", "Atum com cebola", { base: QJ, tops: [["lasca", "#C9A68C", 10], ["anel", CEBOLA, 6]] }],
+    ["sal_palmito", "Palmito", { base: QJ, tops: [["anel", "#EFE6C8", 10], ["azeitona", AZEITONA, 3]] }],
+    ["sal_lombo_canadense", "Lombo canadense", { base: QJ, tops: [["rodela", "#E6A69B", 9]] }],
+    ["sal_camarao_catupiry", "Camarão com catupiry", { base: QJ, tops: [["camarao", "#F28A5B", 8], ["bolha", CATUPIRY, 5]] }],
+    ["sal_strogonoff_carne", "Strogonoff de carne", { base: "#EBC57E", tops: [["lasca", "#8B4A2E", 10], ["pingo", "#C6A06A", 9]] }]
+  ];
+  const DOCES = [
+    ["doc_chocolate_leite", "Chocolate ao leite", { base: CH, tops: [["pingo", "#3A2014", 14]] }],
+    ["doc_chocolate_branco", "Chocolate branco", { base: CB, tops: [["pingo", "#E3CDA0", 12]] }],
+    ["doc_chocolate_morango", "Chocolate com morango", { base: CH, tops: [["morango", MORANGO, 8]] }],
+    ["doc_chocolate_banana", "Chocolate com banana", { base: CH, tops: [["rodela", RODELA_BANANA, 8]] }],
+    ["doc_prestigio", "Prestígio", { base: CH, tops: [["pingo", "#FFFFFF", 24]] }],
+    ["doc_banana_canela", "Banana com canela", { base: BAN, tops: [["rodela", RODELA_BANANA, 8], ["pingo", "#8B5A2B", 16]] }],
+    ["doc_banana_chocolate", "Banana com chocolate", { base: BAN, tops: [["rodela", RODELA_BANANA, 7], ["fio", CH, 4]] }],
+    ["doc_romeu_julieta", "Romeu e Julieta", { base: QJ, tops: [["cubo", "#9E2437", 11]] }],
+    ["doc_doce_leite", "Doce de leite", { base: DL, tops: [["pingo", "#E8B777", 10]] }],
+    ["doc_doce_leite_coco", "Doce de leite com coco", { base: DL, tops: [["pingo", "#FFFFFF", 22]] }],
+    ["doc_doce_leite_banana", "Doce de leite com banana", { base: DL, tops: [["rodela", RODELA_BANANA, 8]] }],
+    ["doc_nutella_morango", "Nutella com morango", { base: NU, tops: [["morango", MORANGO, 8]] }],
+    ["doc_nutella_banana", "Nutella com banana", { base: NU, tops: [["rodela", RODELA_BANANA, 8]] }],
+    ["doc_ovomaltine", "Ovomaltine", { base: CH, tops: [["pingo", "#C58B4E", 24]] }],
+    ["doc_mms_chocolate", "M&M's com chocolate", { base: CH, tops: [["confete", "#E53935", 4], ["confete", "#1E88E5", 4], ["confete", "#FDD835", 4], ["confete", "#43A047", 4], ["confete", "#FB8C00", 3]] }],
+    ["doc_kinder", "Kinder", { base: CB, tops: [["fio", "#6B3E26", 4], ["cubo", "#6B3E26", 6]] }],
+    ["doc_pacoca_chocolate", "Paçoca com chocolate", { base: CH, tops: [["cubo", "#D8AA6E", 13]] }],
+    ["doc_cookies_chocolate", "Cookies com chocolate", { base: CH, tops: [["cubo", "#B07A45", 10], ["pingo", "#2E180E", 8]] }]
+  ];
+  /* Bebidas: [id, nome, emoji, visual] */
+  const BEBIDAS = [
+    ["beb_coca_cola", "Coca-Cola", "🥤", { t: "lata", cor: "#C8102E", faixa: "#FFFFFF" }],
+    ["beb_coca_cola_zero", "Coca-Cola Zero", "🥤", { t: "lata", cor: "#262626", faixa: "#C8102E" }],
+    ["beb_guarana", "Guaraná", "🥤", { t: "lata", cor: "#1F7A3A", faixa: "#F2C230" }],
+    ["beb_guarana_zero", "Guaraná Zero", "🥤", { t: "lata", cor: "#23452F", faixa: "#8BD18F" }],
+    ["beb_fanta_laranja", "Fanta Laranja", "🥤", { t: "lata", cor: "#F57C00", faixa: "#1E4FA3" }],
+    ["beb_fanta_uva", "Fanta Uva", "🥤", { t: "lata", cor: "#6A2C91", faixa: "#F2A0D8" }],
+    ["beb_sprite", "Sprite", "🥤", { t: "lata", cor: "#1A8F4E", faixa: "#F4E04D" }],
+    ["beb_sprite_zero", "Sprite Zero", "🥤", { t: "lata", cor: "#DDE5E8", faixa: "#1A8F4E" }],
+    ["beb_soda_italiana", "Soda italiana", "🍹", { t: "taca", cor: "#E8527A", cor2: "#F7C0CF" }],
+    ["beb_agua_mineral", "Água mineral", "💧", { t: "garrafa", cor: "#9ED3EE", gas: false }],
+    ["beb_agua_com_gas", "Água com gás", "💧", { t: "garrafa", cor: "#7FC2E6", gas: true }],
+    ["beb_suco_laranja", "Suco de laranja", "🧃", { t: "copo", cor: "#F59E1B" }],
+    ["beb_suco_maracuja", "Suco de maracujá", "🧃", { t: "copo", cor: "#F2C230" }],
+    ["beb_suco_morango", "Suco de morango", "🧃", { t: "copo", cor: "#D9344A" }],
+    ["beb_suco_abacaxi", "Suco de abacaxi", "🧃", { t: "copo", cor: "#F4DA6B" }],
+    ["beb_limonada", "Limonada", "🍋", { t: "copo", cor: "#CFE59A" }],
+    ["beb_cha_gelado", "Chá gelado", "🧊", { t: "copo", cor: "#A8612A" }],
+    ["beb_refri_limao", "Refrigerante de limão", "🥤", { t: "lata", cor: "#8BC34A", faixa: "#FFFFFF" }]
+  ];
+  /* Diversos: [id, nome, emoji] */
+  const DIVERSOS = [
+    ["div_batata_frita", "Batata frita", "🍟"],
+    ["div_batata_rustica", "Batata rústica", "🥔"],
+    ["div_aneis_cebola", "Anéis de cebola", "🧅"],
+    ["div_macarronada_vermelho", "Macarronada ao molho vermelho", "🍝"],
+    ["div_macarronada_bolonhesa", "Macarronada à bolonhesa", "🍝"],
+    ["div_macarronada_branco", "Macarronada ao molho branco", "🍝"],
+    ["div_lasanha_bolonhesa", "Lasanha à bolonhesa", "🥘"],
+    ["div_lasanha_frango", "Lasanha de frango", "🥘"],
+    ["div_nhoque_molho", "Nhoque ao molho", "🍲"],
+    ["div_mini_hamburguer", "Mini hambúrguer", "🍔"],
+    ["div_mini_cachorro_quente", "Mini cachorro-quente", "🌭"],
+    ["div_mini_pastel", "Mini pastel", "🥟"],
+    ["div_nuggets_frango", "Nuggets de frango", "🍗"],
+    ["div_coxinha", "Coxinha", "🧆"],
+    ["div_bolinha_queijo", "Bolinha de queijo", "🧀"],
+    ["div_brownie", "Brownie", "🍫"],
+    ["div_pudim", "Pudim", "🍮"],
+    ["div_churros_doce_leite", "Churros com doce de leite", "🥨"]
+  ];
+
+  const PRODUTOS = [
+    ...SALGADAS.map(([id, nome, visual], i) => ({ id, nome, categoria: "salgadas", ordem: i + 1, controlaEstoque: true, emoji: "🍕", visual })),
+    ...DOCES.map(([id, nome, visual], i) => ({ id, nome, categoria: "doces", ordem: i + 1, controlaEstoque: true, emoji: "🍫", visual })),
+    ...BEBIDAS.map(([id, nome, emoji, visual], i) => ({ id, nome, categoria: "bebidas", ordem: i + 1, controlaEstoque: false, emoji, visual })),
+    ...DIVERSOS.map(([id, nome, emoji], i) => ({ id, nome, categoria: "diversos", ordem: i + 1, controlaEstoque: false, emoji, visual: null }))
+  ];
+  const PRODUTO = Object.fromEntries(PRODUTOS.map(p => [p.id, p]));
+  const PIZZAS = PRODUTOS.filter(p => p.controlaEstoque);
+  const SUGESTOES_DA_CASA = ["sal_calabresa_cebola", "sal_marguerita", "sal_frango_catupiry", "doc_chocolate_morango", "beb_guarana", "div_batata_frita"];
+
+  /* ============================================================================
+     4) UTILITÁRIOS
+     ============================================================================ */
+  const $ = (s) => document.querySelector(s);
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const ls = {
+    get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+    del(k) { try { localStorage.removeItem(k); } catch {} }
+  };
+  function hash(str) { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
+  const mesaIdDe = (n) => "mesa_" + String(n).padStart(2, "0");
+  const doisDig = (n) => String(n).padStart(2, "0");
+  const unidadeDe = (p) => CAT[p.categoria].unidade;
+  function qtdTexto(n, p) { const u = unidadeDe(p); return `${n} ${n === 1 ? u.s : u.p}`; }
+  function somaFila(fila) { return Object.values(fila || {}).reduce((t, f) => t + (Number(f?.quantidade) || 0), 0); }
+  function tempoRel(ts) {
+    if (!ts) return "agora";
+    const d = Math.max(0, agoraServidor() - ts);
+    const m = Math.floor(d / 60000);
+    if (m < 1) return "agora";
+    if (m < 60) return `há ${m} min`;
+    const h = Math.floor(m / 60);
+    return `há ${h} h`;
+  }
+  function gerarSessaoId() {
+    if (window.crypto?.randomUUID) return crypto.randomUUID();
+    const b = new Uint8Array(16); (window.crypto || {}).getRandomValues?.(b);
+    return Array.from(b, x => x.toString(16).padStart(2, "0")).join("") || String(Date.now()) + Math.random().toString(16).slice(2);
+  }
+
+  /* ============================================================================
+     5) ESTADO LOCAL (espelho do que chega do Firebase + estado da interface)
+     ============================================================================ */
+  const S = {
+    sessaoId: ls.get("rodizio.sessaoId") || (() => { const id = gerarSessaoId(); ls.set("rodizio.sessaoId", id); return id; })(),
+    mesaNumero: null, mesaId: null,
+    conectado: false, jaConectou: false, offset: 0,
+    estoque: {}, estoqueCarregado: false,
+    estatisticas: {},
+    atividade: [],
+    minhas: {}, minhasCarregadas: false, statusAnterior: {},
+    prefs: {}, mesaInfo: {},
+    categoria: "salgadas",
+    paginas: { salgadas: 0, doces: 0, bebidas: 0, diversos: 0 },
+    sheet: null,
+    confirmandoCancel: null,
+    unsubMesa: [],
+    timersReposicao: {},
+    emAndamento: new Set()
+  };
+
+  let db = null;
+  const r = (caminho) => ref(db, `${RAIZ}/${caminho}`);
+  const agoraServidor = () => Date.now() + (S.offset || 0);
+  const novaChave = () => push(ref(db, `${RAIZ}/_chaves`)).key; // gera chave única SEM gravar nada
+
+  /* ============================================================================
+     6) ILUSTRAÇÕES (SVG) — a pizza mostra visualmente as fatias disponíveis
+     ============================================================================ */
+  const coberturaCache = {};
+  function forma(tipo, cor, x, y, a) {
+    const t = `transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${a})"`;
+    switch (tipo) {
+      case "rodela": return `<g ${t}><circle r="7" fill="${cor}"/><circle r="7" fill="none" stroke="#000" stroke-opacity=".14" stroke-width="1.3"/><circle r="2.6" cx="-1.5" cy="-1.5" fill="#fff" fill-opacity=".18"/></g>`;
+      case "anel": return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="5.3" fill="none" stroke="${cor}" stroke-width="2.3"/>`;
+      case "pingo": return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.1" fill="${cor}"/>`;
+      case "confete": return `<g ${t}><circle r="4" fill="${cor}"/><circle r="1.4" cx="-1.2" cy="-1.2" fill="#fff" fill-opacity=".45"/></g>`;
+      case "bolha": return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="6.4" fill="${cor}" fill-opacity=".96"/>`;
+      case "cubo": return `<rect ${t} x="-3.6" y="-3.6" width="7.2" height="7.2" rx="1.7" fill="${cor}"/>`;
+      case "lasca": return `<ellipse ${t} rx="6.6" ry="3.2" fill="${cor}"/>`;
+      case "folha": return `<g ${t}><ellipse rx="6.2" ry="3.4" fill="${cor}"/><line x1="-5" y1="0" x2="5" y2="0" stroke="#fff" stroke-opacity=".35" stroke-width=".9"/></g>`;
+      case "azeitona": return `<g ${t}><circle r="3.7" fill="${cor}"/><circle r="1.4" fill="#8C7A5A"/></g>`;
+      case "ovo": return `<g ${t}><ellipse rx="8" ry="7" fill="${cor}"/><circle r="3.3" fill="#F2B01E"/></g>`;
+      case "camarao": return `<path ${t} d="M-5 -2 A 6 6 0 1 0 5 -2" fill="none" stroke="${cor}" stroke-width="3.6" stroke-linecap="round"/>`;
+      case "morango": return `<g ${t}><path d="M0 -5 C 5.5 -5 6.2 1.5 0 7.5 C -6.2 1.5 -5.5 -5 0 -5 Z" fill="${cor}"/><path d="M-3 -5 L0 -7.4 L3 -5" stroke="#3C8A3F" stroke-width="1.8" fill="none" stroke-linecap="round"/></g>`;
+      default: return "";
+    }
+  }
+  function coberturaPizza(p) {
+    if (coberturaCache[p.id]) return coberturaCache[p.id];
+    const v = p.visual, doce = p.categoria === "doces";
+    let s = `<circle cx="100" cy="100" r="88" fill="#CF8742"/><circle cx="100" cy="100" r="83" fill="#E4A75D"/>`;
+    if (!doce) s += `<circle cx="100" cy="100" r="77.5" fill="#C8472C"/>`;
+    s += `<circle cx="100" cy="100" r="${doce ? 78 : 74.5}" fill="${v.base}"/>`;
+    const grupos = v.tops.filter(t => t[0] !== "fio");
+    const itens = [];
+    grupos.forEach((g, gi) => { for (let k = 0; k < g[2]; k++) itens.push({ g, chave: (k + 0.5) / g[2] + gi * 0.0007 }); });
+    itens.sort((a, b) => a.chave - b.chave);
+    const T = itens.length, rot = (hash(p.id) % 360) * Math.PI / 180, R = 63;
+    itens.forEach((it, i) => {
+      const rr = R * Math.sqrt((i + 0.6) / T), ang = rot + i * 2.39996;
+      s += forma(it.g[0], it.g[1], 100 + rr * Math.cos(ang), 100 + rr * Math.sin(ang), hash(p.id + i) % 180);
+    });
+    v.tops.filter(t => t[0] === "fio").forEach(t => {
+      const n = t[2], graus = hash(p.id) % 180;
+      let d = "";
+      for (let k = 0; k < n; k++) {
+        const y = 100 - 42 + (84 / (n - 1 || 1)) * k, meia = Math.sqrt(Math.max(0, 68 * 68 - (y - 100) ** 2));
+        const x0 = 100 - meia, x1 = 100 + meia, seg = (x1 - x0) / 4;
+        d += `M${x0.toFixed(1)} ${y.toFixed(1)} q${(seg / 2).toFixed(1)} -6 ${seg.toFixed(1)} 0 t${seg.toFixed(1)} 0 t${seg.toFixed(1)} 0 t${seg.toFixed(1)} 0 `;
+      }
+      s += `<path d="${d}" fill="none" stroke="${t[1]}" stroke-width="2.6" stroke-linecap="round" transform="rotate(${graus} 100 100)"/>`;
+    });
+    return (coberturaCache[p.id] = s);
+  }
+  function cunha(k, n, R = 91.5) {
+    const a0 = -Math.PI / 2 + (k * 2 * Math.PI) / n, a1 = a0 + (2 * Math.PI) / n;
+    const x0 = 100 + R * Math.cos(a0), y0 = 100 + R * Math.sin(a0), x1 = 100 + R * Math.cos(a1), y1 = 100 + R * Math.sin(a1);
+    return `M100 100 L${x0.toFixed(2)} ${y0.toFixed(2)} A${R} ${R} 0 0 1 ${x1.toFixed(2)} ${y1.toFixed(2)} Z`;
+  }
+  function svgPizza(p, disponivel, cap = FATIAS_POR_PIZZA) {
+    const faltam = Math.max(0, Math.min(cap, cap - disponivel));
+    let linhas = "";
+    for (let k = 0; k < cap / 2; k++) {
+      const a = -Math.PI / 2 + (k * 2 * Math.PI) / cap;
+      linhas += `<line x1="${(100 - 86 * Math.cos(a)).toFixed(1)}" y1="${(100 - 86 * Math.sin(a)).toFixed(1)}" x2="${(100 + 86 * Math.cos(a)).toFixed(1)}" y2="${(100 + 86 * Math.sin(a)).toFixed(1)}" stroke="#6B3A12" stroke-opacity=".32" stroke-width="1.5"/>`;
+    }
+    let vazias = "";
+    if (faltam > 0 && faltam < cap) for (let k = 0; k < faltam; k++) vazias += `<path class="fatia-vazia" d="${cunha(k, cap)}"/>`;
+    return `<svg viewBox="0 0 200 200" role="img" aria-label="${esc(p.nome)}"><circle class="prato" cx="100" cy="100" r="98"/>${coberturaPizza(p)}${linhas}${vazias}</svg>`;
+  }
+  function svgBebida(p) {
+    const v = p.visual;
+    let s = `<svg viewBox="0 0 200 200" role="img" aria-label="${esc(p.nome)}"><circle class="prato" cx="100" cy="100" r="98"/><ellipse cx="100" cy="168" rx="40" ry="6" fill="#000" fill-opacity=".08"/>`;
+    if (v.t === "lata") {
+      s += `<rect x="68" y="44" width="64" height="122" rx="12" fill="${v.cor}"/>
+        <rect x="68" y="94" width="64" height="26" fill="${v.faixa}" fill-opacity=".92"/>
+        <rect x="78" y="54" width="7" height="104" rx="3.5" fill="#fff" fill-opacity=".22"/>
+        <ellipse cx="100" cy="46" rx="30" ry="6" fill="#D6DADF"/><ellipse cx="100" cy="46" rx="20" ry="3.4" fill="#AEB4BA"/>`;
+    } else if (v.t === "copo") {
+      s += `<path d="M64 48 H136 L127 164 Q100 170 73 164 Z" fill="#fff" fill-opacity=".75" stroke="#B8C2BC" stroke-width="2"/>
+        <path d="M67 80 H133 L126.8 162 Q100 167 73.2 162 Z" fill="${v.cor}"/>
+        <rect x="80" y="86" width="17" height="15" rx="3" fill="#fff" fill-opacity=".45" transform="rotate(-12 88 93)"/>
+        <rect x="102" y="96" width="15" height="14" rx="3" fill="#fff" fill-opacity=".35" transform="rotate(10 110 103)"/>
+        <line x1="114" y1="28" x2="104" y2="150" stroke="#E0452B" stroke-width="5.5" stroke-linecap="round"/>`;
+    } else if (v.t === "garrafa") {
+      s += `<rect x="89" y="28" width="22" height="12" rx="3" fill="#2F6FB0"/>
+        <path d="M90 40 H110 V54 Q128 64 128 86 V158 Q128 168 118 168 H82 Q72 168 72 158 V86 Q72 64 90 54 Z" fill="${v.cor}" fill-opacity=".8" stroke="#6FA9CC" stroke-width="1.5"/>
+        <rect x="72" y="104" width="56" height="30" fill="#fff" fill-opacity=".85"/><rect x="72" y="115" width="56" height="7" fill="#2F6FB0" fill-opacity=".5"/>
+        <rect x="80" y="72" width="6" height="80" rx="3" fill="#fff" fill-opacity=".35"/>`;
+      if (v.gas) s += `<circle cx="100" cy="146" r="3" fill="#fff" fill-opacity=".8"/><circle cx="110" cy="152" r="2.2" fill="#fff" fill-opacity=".8"/><circle cx="92" cy="90" r="2.4" fill="#fff" fill-opacity=".8"/><circle cx="112" cy="84" r="3" fill="#fff" fill-opacity=".8"/>`;
+    } else {
+      s += `<path d="M74 40 H126 L119 166 H81 Z" fill="#fff" fill-opacity=".75" stroke="#B8C2BC" stroke-width="2"/>
+        <path d="M77 70 H123 L119.8 118 H80.2 Z" fill="${v.cor2}"/><path d="M80.2 118 H119.8 L119 164 H81 Z" fill="${v.cor}"/>
+        <circle cx="120" cy="44" r="12" fill="#F4DA6B" stroke="#fff" stroke-width="2"/>
+        <line x1="108" y1="24" x2="98" y2="150" stroke="#1F3B2D" stroke-width="5" stroke-linecap="round"/>`;
+    }
+    return s + `</svg>`;
+  }
+  function svgPrato(p) {
+    return `<svg viewBox="0 0 200 200" role="img" aria-label="${esc(p.nome)}"><circle class="prato" cx="100" cy="100" r="98"/><circle cx="100" cy="100" r="74" fill="#fff" stroke="#DCE2D9" stroke-width="3"/><text x="100" y="104" text-anchor="middle" dominant-baseline="middle" font-size="76">${p.emoji}</text></svg>`;
+  }
+  function imagemProduto(p, st) {
+    if (p.categoria === "bebidas") return svgBebida(p);
+    if (p.categoria === "diversos") return svgPrato(p);
+    const cap = st?.capacidade || FATIAS_POR_PIZZA;
+    const disp = st?.tipo === "disponivel" ? st.disponivel : st?.tipo === "indisponivel" ? 0 : cap;
+    return svgPizza(p, disp, cap);
+  }
+
+  /* ============================================================================
+     7) REGRAS DE DISPONIBILIDADE (leitura do estado compartilhado)
+     ============================================================================ */
+  function estadoProduto(p) {
+    if (!p.controlaEstoque) return { tipo: "livre" };
+    const e = S.estoque[p.id];
+    if (!e) return { tipo: "carregando", capacidade: FATIAS_POR_PIZZA };
+    const cap = Number(e.capacidade) || FATIAS_POR_PIZZA;
+    const disp = Math.max(0, Math.min(cap, Number(e.disponivel) || 0));
+    const livreProxima = Math.max(0, cap - somaFila(e.fila));
+    const recem = disp > 0 && (e.ciclo || 1) > 1 && e.repostoEm && agoraServidor() - e.repostoEm < DESTAQUE_REPOSTA_MS;
+    return { tipo: disp > 0 ? "disponivel" : "indisponivel", disponivel: disp, capacidade: cap, livreProxima, recem };
+  }
+
+  /* ============================================================================
+     8) OPERAÇÕES NO BANCO (todas as que mexem em estoque usam transação)
+     ============================================================================ */
+
+  /* Distribui fatias livres para a fila (ordem de chegada). Usada DENTRO de transações. */
+  function alocarFila(cur, livres, promovidos) {
+    const fila = cur.fila || {};
+    const ordem = Object.entries(fila).sort((a, b) => (a[1]?.criadoEm || 0) - (b[1]?.criadoEm || 0));
+    for (const [id, f] of ordem) {
+      if (livres <= 0) break;
+      const q = Number(f?.quantidade) || 0;
+      if (q > 0 && q <= livres) {
+        cur.reservas = cur.reservas || {};
+        cur.reservas[id] = { mesaId: f.mesaId, quantidade: q, ciclo: cur.ciclo, reservadoEm: agoraServidor(), prioridade: true };
+        delete fila[id];
+        livres -= q;
+        promovidos.push(id);
+      }
+    }
+    cur.fila = fila;
+    return livres;
+  }
+
+  /* Cria uma solicitação de PIZZA reservando fatias com transação.
+     modo "agora"   -> reserva do estoque atual (nunca além do disponível)
+     modo "proxima" -> entra na fila da próxima pizza (soma da fila ≤ capacidade) */
+  async function solicitarPizza(p, qtd, modo) {
+    qtd = Math.floor(Number(qtd));
+    if (!Number.isInteger(qtd) || qtd < 1 || qtd > FATIAS_POR_PIZZA) return { ok: false, motivo: "invalida" };
+    const st = estadoProduto(p);
+    if (modo === "agora" && st.tipo === "disponivel" && qtd > st.disponivel) return { ok: false, motivo: "insuficiente", restante: st.disponivel };
+
+    const solRef = push(r("solicitacoes"));
+    const solId = solRef.key;
+    const mesaId = S.mesaId;
+    let motivo = null, restante = null;
+
+    const tx = await runTransaction(r(`estoque/${p.id}`), (cur) => {
+      motivo = null; restante = null;
+      if (cur === null) return cur; // cache local vazio: o Firebase repete com o valor real
+      const cap = Number(cur.capacidade) || FATIAS_POR_PIZZA;
+      const disp = Math.max(0, Number(cur.disponivel) || 0);
+      const agora = agoraServidor();
+      if (modo === "agora") {
+        if (disp <= 0) { motivo = "esgotado"; return; }
+        if (qtd > disp) { motivo = "insuficiente"; restante = disp; return; }
+        cur.disponivel = disp - qtd;
+        cur.reservas = cur.reservas || {};
+        cur.reservas[solId] = { mesaId, quantidade: qtd, ciclo: cur.ciclo || 1, reservadoEm: agora };
+        if (cur.disponivel === 0) cur.zeradoEm = agora;
+      } else {
+        if (disp > 0) { motivo = "voltou"; return; }
+        const livre = cap - somaFila(cur.fila);
+        if (livre <= 0) { motivo = "fila_cheia"; return; }
+        if (qtd > livre) { motivo = "fila_insuficiente"; restante = livre; return; }
+        cur.fila = cur.fila || {};
+        cur.fila[solId] = { mesaId, quantidade: qtd, criadoEm: agora };
+        if (!cur.zeradoEm) cur.zeradoEm = agora;
+      }
+      cur.atualizadoEm = agora;
+      return cur;
+    }, { applyLocally: false });
+
+    if (!tx.committed) return { ok: false, motivo: motivo || "erro", restante };
+    const val = tx.snapshot.val() || {};
+    let status;
+    if (val.reservas && val.reservas[solId]) status = STATUS.SOLICITADO;
+    else if (val.fila && val.fila[solId]) status = STATUS.AGUARDANDO_REPOSICAO;
+    else return { ok: false, motivo: "erro" };
+
+    await gravarSolicitacao(solRef, p, qtd, status, val.reservas?.[solId]?.ciclo ?? null);
+    posPedido(p, qtd);
+    return { ok: true, status };
+  }
+
+  /* Bebidas e diversos: sempre disponíveis, sem controle de estoque. */
+  async function solicitarLivre(p, qtd) {
+    qtd = Math.floor(Number(qtd));
+    const max = CAT[p.categoria].maxQtd;
+    if (!Number.isInteger(qtd) || qtd < 1 || qtd > max) return { ok: false, motivo: "invalida" };
+    const solRef = push(r("solicitacoes"));
+    await gravarSolicitacao(solRef, p, qtd, STATUS.SOLICITADO, null);
+    posPedido(p, qtd);
+    return { ok: true, status: STATUS.SOLICITADO };
+  }
+
+  function gravarSolicitacao(solRef, p, qtd, status, ciclo) {
+    const ts = serverTimestamp();
+    return set(solRef, {
+      id: solRef.key,
+      mesaId: S.mesaId,
+      mesaNumero: S.mesaNumero,
+      produtoId: p.id,
+      produtoNome: p.nome,
+      categoria: p.categoria,
+      emoji: p.emoji,
+      quantidade: qtd,
+      unidade: unidadeDe(p).id,
+      controlaEstoque: !!p.controlaEstoque,
+      status,
+      prioridade: false,
+      cicloEstoque: ciclo,
+      origem: "cliente",
+      sessaoId: S.sessaoId,
+      criadoEm: ts,
+      atualizadoEm: ts,
+      atualizadoPor: "cliente",
+      historico: { [novaChave()]: { status, em: ts, por: "cliente" } }
+    });
+  }
+
+  function posPedido(p, qtd) {
+    update(r(`mesas/${S.mesaId}`), { ultimaAtividadeEm: serverTimestamp() }).catch(() => {});
+    registrarEstatistica(p, qtd).catch(() => {});
+  }
+
+  async function registrarEstatistica(p, qtd) {
+    let virouPopular = false;
+    await runTransaction(r(`estatisticas/${p.id}`), (cur) => {
+      virouPopular = false;
+      const agora = agoraServidor();
+      const c = cur || {};
+      if (!c.janelaInicio || agora - c.janelaInicio > JANELA_POPULAR_MS) {
+        c.janelaInicio = agora; c.janelaContagem = 0; c.popularAvisadoEm = null;
+      }
+      c.total = (c.total || 0) + 1;
+      c.quantidadeTotal = (c.quantidadeTotal || 0) + qtd;
+      c.janelaContagem = (c.janelaContagem || 0) + 1;
+      c.ultimaSolicitacaoEm = agora;
+      if (c.janelaContagem >= LIMIAR_POPULAR && !c.popularAvisadoEm) { c.popularAvisadoEm = agora; virouPopular = true; }
+      return c;
+    }, { applyLocally: false });
+    if (virouPopular) registrarAtividade("popular", PRODUTO[p.id]);
+  }
+
+  /* Feed público: nunca inclui mesa, sessão ou quantidade. */
+  function registrarAtividade(tipo, p) {
+    if (!p) return;
+    let emoji = CAT[p.categoria].emoji, texto;
+    const pizza = p.controlaEstoque;
+    if (tipo === "popular") texto = pizza ? `${p.nome} está sendo bastante solicitada.` : `Muitas mesas estão pedindo ${p.nome}.`;
+    else if (tipo === "reposta") {
+      if (p.categoria === "salgadas") { emoji = "🔥"; texto = `${p.nome} acabou de sair.`; }
+      else { emoji = "🍫"; texto = `${p.nome} voltou a ficar disponível.`; }
+    } else if (tipo === "voltou") texto = `${p.nome} voltou a ficar disponível.`;
+    else return;
+    Promise.resolve(push(r("atividade"), { tipo, produtoId: p.id, produtoNome: p.nome, categoria: p.categoria, emoji, texto, criadoEm: serverTimestamp() })).catch(() => {});
+  }
+
+  /* Cancelamento pelo cliente: só enquanto SOLICITADO (ou aguardando na fila).
+     A transação no status impede cancelar algo que a equipe já colocou EM ATENDIMENTO. */
+  async function cancelarSolicitacao(solId) {
+    const sol = S.minhas[solId];
+    if (!sol) return;
+    if (!S.conectado) { toast("Sem conexão no momento. Tente novamente em instantes."); return; }
+    const tx = await runTransaction(r(`solicitacoes/${solId}`), (cur) => {
+      if (cur === null) return cur;
+      if (!CANCELAVEIS.includes(cur.status)) return;
+      const agora = agoraServidor();
+      cur.status = STATUS.CANCELADO;
+      cur.canceladoPor = "cliente";
+      cur.canceladoSessaoId = S.sessaoId;
+      cur.canceladoEm = agora;
+      cur.atualizadoEm = agora;
+      cur.atualizadoPor = "cliente";
+      cur.historico = cur.historico || {};
+      cur.historico[novaChave()] = { status: STATUS.CANCELADO, em: agora, por: "cliente" };
+      return cur;
+    }, { applyLocally: false });
+
+    if (!tx.committed || tx.snapshot.val()?.status !== STATUS.CANCELADO) {
+      toast("Esse pedido já está em atendimento e não pode mais ser cancelado.");
+      return;
+    }
+    if (sol.controlaEstoque) await liberarEstoque(sol.produtoId, solId);
+    toast(`Pedido de ${sol.produtoNome} cancelado. O garçom já foi avisado.`);
+  }
+
+  /* Devolve fatias de uma solicitação cancelada (idempotente).
+     - Se estava na fila: só sai da fila.
+     - Se tinha reserva do MESMO ciclo: as fatias voltam — primeiro para a fila
+       (prioridade), depois para "disponivel". */
+  async function liberarEstoque(produtoId, solId) {
+    let promovidos = [], voltou = false;
+    const tx = await runTransaction(r(`estoque/${produtoId}`), (cur) => {
+      promovidos = []; voltou = false;
+      if (cur === null) return cur;
+      const agora = agoraServidor();
+      if (cur.fila && cur.fila[solId]) { delete cur.fila[solId]; cur.atualizadoEm = agora; return cur; }
+      const res = cur.reservas && cur.reservas[solId];
+      if (!res) return; // nada a liberar
+      delete cur.reservas[solId];
+      const cap = Number(cur.capacidade) || FATIAS_POR_PIZZA;
+      if ((res.ciclo || 1) === (cur.ciclo || 1)) {
+        const antes = Math.max(0, Number(cur.disponivel) || 0);
+        let livres = Math.min(cap, antes + (Number(res.quantidade) || 0)) - antes;
+        livres = alocarFila(cur, livres, promovidos);
+        cur.disponivel = antes + livres;
+        if (cur.disponivel > 0) { cur.zeradoEm = null; if (antes === 0) voltou = true; }
+      }
+      cur.atualizadoEm = agora;
+      return cur;
+    }, { applyLocally: false });
+    if (tx.committed) {
+      promovidos.forEach(id => promoverSolicitacao(id));
+      if (voltou) registrarAtividade("voltou", PRODUTO[produtoId]);
+    }
+  }
+
+  /* Remove a reserva de um pedido já ATENDIDO (as fatias foram entregues). Idempotente. */
+  async function consumirReserva(produtoId, solId) {
+    await runTransaction(r(`estoque/${produtoId}`), (cur) => {
+      if (cur === null) return cur;
+      if (!cur.reservas || !cur.reservas[solId]) return;
+      delete cur.reservas[solId];
+      return cur;
+    }, { applyLocally: false });
+  }
+
+  /* Reposição interna: pizza zerada há ≥ 1 minuto volta a 8 fatias.
+     Qualquer dispositivo conectado pode executar; a transação garante que
+     apenas UM repõe. A fila (pedidos pendentes) é atendida antes de tudo. */
+  async function reporPizza(produtoId) {
+    if (!db || !S.conectado || S.emAndamento.has("repor:" + produtoId)) return;
+    S.emAndamento.add("repor:" + produtoId);
+    let promovidos = [], repos = false;
+    try {
+      const tx = await runTransaction(r(`estoque/${produtoId}`), (cur) => {
+        promovidos = []; repos = false;
+        if (cur === null) return cur;
+        if ((Number(cur.disponivel) || 0) > 0) return;
+        const agora = agoraServidor();
+        if (!cur.zeradoEm) { cur.zeradoEm = agora; return cur; } // corrige dado sem marca de tempo
+        if (agora - cur.zeradoEm < REPOSICAO_MS) return;
+        const cap = Number(cur.capacidade) || FATIAS_POR_PIZZA;
+        cur.ciclo = (cur.ciclo || 1) + 1;
+        const livres = alocarFila(cur, cap, promovidos);
+        cur.disponivel = livres;
+        cur.repostoEm = agora;
+        cur.zeradoEm = livres === 0 ? agora : null;
+        cur.atualizadoEm = agora;
+        repos = true;
+        return cur;
+      }, { applyLocally: false });
+      if (tx.committed && repos) {
+        promovidos.forEach(id => promoverSolicitacao(id));
+        registrarAtividade("reposta", PRODUTO[produtoId]);
+      }
+    } catch (e) {
+      console.warn("[reposição]", e);
+    } finally {
+      S.emAndamento.delete("repor:" + produtoId);
+    }
+  }
+
+  /* AGUARDANDO_REPOSICAO -> SOLICITADO com prioridade (só se ainda estiver aguardando). */
+  async function promoverSolicitacao(solId) {
+    const chave = "promover:" + solId;
+    if (S.emAndamento.has(chave)) return;
+    S.emAndamento.add(chave);
+    try {
+      await runTransaction(r(`solicitacoes/${solId}`), (cur) => {
+        if (cur === null) return cur;
+        if (cur.status !== STATUS.AGUARDANDO_REPOSICAO) return;
+        const agora = agoraServidor();
+        cur.status = STATUS.SOLICITADO;
+        cur.prioridade = true;
+        cur.liberadoEm = agora;
+        cur.atualizadoEm = agora;
+        cur.atualizadoPor = "sistema";
+        cur.historico = cur.historico || {};
+        cur.historico[novaChave()] = { status: STATUS.SOLICITADO, em: agora, por: "sistema" };
+        return cur;
+      }, { applyLocally: false });
+    } catch (e) { console.warn("[promover]", e); }
+    finally { S.emAndamento.delete(chave); }
+  }
+
+  /* Mantém solicitações desta mesa coerentes com o estoque, caso algum
+     dispositivo tenha perdido a conexão no meio de uma operação. */
+  function reconciliar() {
+    if (!S.conectado || !S.estoqueCarregado) return;
+    for (const s of Object.values(S.minhas)) {
+      if (!s || !s.controlaEstoque) continue;
+      const e = S.estoque[s.produtoId];
+      if (!e) continue;
+      const temReserva = !!(e.reservas && e.reservas[s.id]);
+      const naFila = !!(e.fila && e.fila[s.id]);
+      if (s.status === STATUS.AGUARDANDO_REPOSICAO && temReserva) promoverSolicitacao(s.id);
+      else if (s.status === STATUS.CANCELADO && (temReserva || naFila)) umaVez("lib:" + s.id, () => liberarEstoque(s.produtoId, s.id));
+      else if (s.status === STATUS.ATENDIDO && temReserva) umaVez("cons:" + s.id, () => consumirReserva(s.produtoId, s.id));
+    }
+  }
+  function umaVez(chave, fn) {
+    if (S.emAndamento.has(chave)) return;
+    S.emAndamento.add(chave);
+    Promise.resolve().then(fn).catch(e => console.warn(e)).finally(() => S.emAndamento.delete(chave));
+  }
+
+  /* Agenda a reposição (timer interno, invisível para o cliente). */
+  function agendarReposicoes() {
+    for (const p of PIZZAS) {
+      clearTimeout(S.timersReposicao[p.id]);
+      const e = S.estoque[p.id];
+      if (!e || (Number(e.disponivel) || 0) > 0) continue;
+      const falta = e.zeradoEm ? e.zeradoEm + REPOSICAO_MS - agoraServidor() : 0;
+      S.timersReposicao[p.id] = setTimeout(() => reporPizza(p.id), Math.max(0, falta) + 250);
+    }
+  }
+
+  /* Cria catálogo e estoque inicial no banco se ainda não existirem. Seguro com vários dispositivos. */
+  let catalogoOk = false;
+  async function garantirCatalogo() {
+    if (catalogoOk || !S.conectado) return;
+    catalogoOk = true;
+    try {
+      const cfg = await get(r("config/versaoCatalogo"));
+      if (cfg.val() !== VERSAO_CATALOGO) {
+        const u = {};
+        u["config/versaoCatalogo"] = VERSAO_CATALOGO;
+        u["config/fatiasPorPizza"] = FATIAS_POR_PIZZA;
+        u["config/reposicaoMs"] = REPOSICAO_MS;
+        u["config/totalMesas"] = TOTAL_MESAS;
+        for (const c of CATEGORIAS) u[`categorias/${c.id}`] = { id: c.id, nome: c.nome, emoji: c.emoji, ordem: c.ordem, controlaEstoque: c.controlaEstoque, unidade: c.unidade.id };
+        for (const p of PRODUTOS) u[`produtos/${p.id}`] = { id: p.id, nome: p.nome, categoria: p.categoria, ordem: p.ordem, controlaEstoque: p.controlaEstoque, emoji: p.emoji };
+        for (let n = 1; n <= TOTAL_MESAS; n++) { u[`mesas/${mesaIdDe(n)}/numero`] = n; u[`mesas/${mesaIdDe(n)}/rotulo`] = `Mesa ${doisDig(n)}`; }
+        await update(ref(db, RAIZ), u);
+      }
+      const est = await get(r("estoque"));
+      const atual = est.val() || {};
+      await Promise.all(PIZZAS.filter(p => !atual[p.id]).map(p =>
+        runTransaction(r(`estoque/${p.id}`), (cur) => cur === null ? {
+          produtoId: p.id, capacidade: FATIAS_POR_PIZZA, disponivel: FATIAS_POR_PIZZA, ciclo: 1, atualizadoEm: agoraServidor()
+        } : undefined, { applyLocally: false })
+      ));
+    } catch (e) {
+      catalogoOk = false;
+      console.warn("[catálogo]", e);
+    }
+  }
+
+  /* ============================================================================
+     9) LISTENERS EM TEMPO REAL
+     ============================================================================ */
+  function ouvirGlobais() {
+    onValue(ref(db, ".info/serverTimeOffset"), s => { S.offset = Number(s.val()) || 0; });
+    onValue(ref(db, ".info/connected"), s => {
+      S.conectado = s.val() === true;
+      if (S.conectado) { S.jaConectou = true; garantirCatalogo(); registrarPresenca(); reconciliar(); agendarReposicoes(); }
+      atualizarConexao();
+      agendarRender();
+    });
+    onValue(r("estoque"), s => {
+      S.estoque = s.val() || {};
+      S.estoqueCarregado = true;
+      agendarReposicoes();
+      reconciliar();
+      agendarRender();
+    }, erroSilencioso);
+    onValue(r("estatisticas"), s => { S.estatisticas = s.val() || {}; agendarRender(); }, erroSilencioso);
+    onValue(query(r("atividade"), orderByChild("criadoEm"), limitToLast(30)), s => {
+      const lista = [];
+      s.forEach(c => { lista.push({ id: c.key, ...c.val() }); });
+      S.atividade = lista.reverse();
+      if (!ls.get("rodizio.atividadeVista")) ls.set("rodizio.atividadeVista", String(agoraServidor()));
+      renderAtividade();
+    }, erroSilencioso);
+  }
+
+  function ouvirMesa() {
+    S.unsubMesa.forEach(u => u());
+    S.unsubMesa = [];
+    S.minhas = {}; S.minhasCarregadas = false; S.statusAnterior = {}; S.prefs = {}; S.mesaInfo = {};
+    const mesaId = S.mesaId;
+
+    S.unsubMesa.push(onValue(r(`mesas/${mesaId}`), s => { S.mesaInfo = s.val() || {}; agendarRender(); }, erroSilencioso));
+    S.unsubMesa.push(onValue(r(`preferencias/${mesaId}/naoRecomendar`), s => { S.prefs = s.val() || {}; agendarRender(); }, erroSilencioso));
+    S.unsubMesa.push(onValue(query(r("solicitacoes"), orderByChild("mesaId"), equalTo(mesaId)), s => {
+      const novas = {};
+      s.forEach(c => { const v = c.val(); if (v) novas[c.key] = { ...v, id: c.key }; });
+      detectarMudancas(novas);
+      S.minhas = novas;
+      reconciliar();
+      agendarRender();
+    }, erroSilencioso));
+  }
+
+  function erroSilencioso(e) { console.warn("[firebase]", e); }
+
+  async function registrarPresenca() {
+    if (!db || !S.mesaId || !S.conectado) return;
+    try {
+      const pRef = r(`mesas/${S.mesaId}/dispositivos/${S.sessaoId}`);
+      await onDisconnect(pRef).remove();
+      await set(pRef, { conectadoEm: serverTimestamp(), tipo: "cliente" });
+      await runTransaction(r(`mesas/${S.mesaId}/inicioAtendimento`), cur => cur ? undefined : agoraServidor(), { applyLocally: false });
+    } catch (e) { console.warn("[presença]", e); }
+  }
+  function sairDaMesa(mesaIdAntiga) {
+    if (!db || !mesaIdAntiga) return;
+    const pRef = r(`mesas/${mesaIdAntiga}/dispositivos/${S.sessaoId}`);
+    onDisconnect(pRef).cancel().catch(() => {});
+    remove(pRef).catch(() => {});
+  }
+
+  /* Avisos quando a equipe (ou o sistema) muda o status de um pedido desta mesa */
+  function detectarMudancas(novas) {
+    if (!S.minhasCarregadas) {
+      S.minhasCarregadas = true;
+      S.statusAnterior = Object.fromEntries(Object.entries(novas).map(([k, v]) => [k, v.status]));
+      return;
+    }
+    for (const [id, s] of Object.entries(novas)) {
+      const antes = S.statusAnterior[id];
+      if (antes && antes !== s.status) notificarMudanca(s, antes);
+    }
+    S.statusAnterior = Object.fromEntries(Object.entries(novas).map(([k, v]) => [k, v.status]));
+  }
+  function notificarMudanca(s, antes) {
+    const p = PRODUTO[s.produtoId];
+    const nome = s.produtoNome || p?.nome || "seu pedido";
+    if (antes === STATUS.AGUARDANDO_REPOSICAO && s.status === STATUS.SOLICITADO) {
+      mostrarConfirmacao({
+        fogo: true, icone: "🔥",
+        titulo: `Sua ${nome} acabou de sair.`,
+        texto: `<b>${esc(p ? qtdTexto(s.quantidade, p) : s.quantidade)}</b> destinadas à sua mesa.`
+      });
+      vibrar([60, 40, 60]);
+    } else if (s.status === STATUS.EM_ATENDIMENTO) {
+      toast(`🛎️ O garçom já está cuidando do seu pedido de ${nome}.`); vibrar(40);
+    } else if (s.status === STATUS.ATENDIDO) {
+      toast(`✓ ${nome} entregue na sua mesa. Bom apetite!`);
+    } else if (s.status === STATUS.CANCELADO) {
+      if (s.canceladoSessaoId === S.sessaoId) return;
+      toast(s.canceladoPor === "cliente" ? `Pedido de ${nome} cancelado.` : `O pedido de ${nome} foi cancelado pela equipe.`);
+    }
+  }
+  function vibrar(p) { try { navigator.vibrate?.(p); } catch {} }
+
+  /* ============================================================================
+     10) INTERFACE — renderização
+     ============================================================================ */
+  let renderPendente = false;
+  function agendarRender() {
+    if (renderPendente) return;
+    renderPendente = true;
+    requestAnimationFrame(() => {
+      renderPendente = false;
+      atualizarCards();
+      renderRecs();
+      renderBarraPedidos();
+      if (S.sheet && !$("#telaQtd").hidden) renderSheet();
+      if (!$("#telaPedidos").hidden) renderPedidos();
+    });
+  }
+
+  function atualizarConexao() {
+    const el = $("#conexao");
+    if (S.conectado) { el.dataset.estado = "on"; el.lastElementChild.textContent = "Conectado"; }
+    else { el.dataset.estado = "off"; el.lastElementChild.textContent = S.jaConectou ? "Reconectando..." : "Conectando..."; }
+  }
+
+  /* ---- Abas ---- */
+  function montarAbas() {
+    $("#abas").innerHTML = CATEGORIAS.map(c =>
+      `<button class="aba" role="tab" type="button" data-cat="${c.id}" aria-selected="${c.id === S.categoria}"><span class="aba-emoji" aria-hidden="true">${c.emoji}</span><span>${c.nome}</span></button>`
+    ).join("");
+  }
+  function trocarCategoria(cat) {
+    if (!CAT[cat]) return;
+    S.categoria = cat;
+    document.querySelectorAll(".aba").forEach(b => b.setAttribute("aria-selected", String(b.dataset.cat === cat)));
+    renderCardapio();
+  }
+
+  /* ---- Cardápio: 3 páginas de 3×2 ---- */
+  function htmlCard(p) {
+    const st = estadoProduto(p);
+    const oculto = !!S.prefs[p.id];
+    let disp, botao, selo = "";
+    if (st.tipo === "livre") {
+      disp = `<p class="card-disp ok">Disponível</p>`;
+      botao = `<button class="btn-pedir" type="button" data-acao="pedir">PEDIR</button>`;
+    } else if (st.tipo === "carregando") {
+      disp = `<p class="card-disp">Carregando…</p>`;
+      botao = `<button class="btn-pedir" type="button" disabled>PEDIR</button>`;
+    } else if (st.tipo === "disponivel") {
+      disp = `<p class="card-disp ok"><b>${st.disponivel}</b> ${st.disponivel === 1 ? "fatia disponível" : "fatias disponíveis"}</p>`;
+      botao = `<button class="btn-pedir" type="button" data-acao="pedir">PEDIR</button>`;
+      if (st.recem) selo = `<span class="selo">🔥 ${p.categoria === "doces" ? "REPOSTA AGORA" : "ACABOU DE SAIR"}</span>`;
+    } else {
+      disp = `<p class="card-disp esg">TEMPORARIAMENTE INDISPONÍVEL</p>`;
+      botao = st.livreProxima > 0
+        ? `<button class="btn-pedir sec" type="button" data-acao="proxima">QUERO DA PRÓXIMA</button>`
+        : `<button class="btn-pedir" type="button" disabled>INDISPONÍVEL</button>`;
+    }
+    const naoRec = `<button class="btn-naorec${oculto ? " on" : ""}" type="button" data-acao="naorec" aria-pressed="${oculto}">${oculto ? "↺ Voltar a recomendar" : "🚫 Não recomendar"}</button>`;
+    return {
+      classe: "card" + (st.tipo === "indisponivel" ? " esgotado" : ""),
+      html: `<div class="card-img">${imagemProduto(p, st)}${selo}</div><h3 class="card-nome">${esc(p.nome)}</h3>${disp}${botao}${naoRec}`
+    };
+  }
+  function renderCardapio() {
+    const prods = PRODUTOS.filter(p => p.categoria === S.categoria);
+    const pags = [0, 1, 2].map(i => prods.slice(i * 6, i * 6 + 6));
+    const pager = $("#pager");
+    pager.innerHTML = pags.map((pg, i) =>
+      `<div class="pagina" role="group" aria-label="Página ${i + 1} de 3">${pg.map(p => {
+        const c = htmlCard(p);
+        return `<article class="${c.classe}" data-id="${p.id}">${c.html}</article>`;
+      }).join("")}</div>`
+    ).join("");
+    $("#dots").innerHTML = pags.map((_, i) => `<button class="dot" type="button" data-pag="${i}" aria-label="Página ${i + 1}"></button>`).join("");
+    requestAnimationFrame(() => { pager.scrollLeft = S.paginas[S.categoria] * pager.clientWidth; marcarPagina(S.paginas[S.categoria]); });
+    marcarPagina(S.paginas[S.categoria]);
+  }
+  function atualizarCards() {
+    document.querySelectorAll("#pager .card").forEach(el => {
+      const p = PRODUTO[el.dataset.id];
+      if (!p) return;
+      const c = htmlCard(p);
+      if (el._html !== c.html) { el.innerHTML = c.html; el._html = c.html; }
+      if (el.className !== c.classe) el.className = c.classe;
+    });
+  }
+  function paginaAtual() { const pg = $("#pager"); return pg.clientWidth ? Math.round(pg.scrollLeft / pg.clientWidth) : 0; }
+  function irPagina(i) {
+    const pg = $("#pager");
+    i = Math.max(0, Math.min(2, i));
+    const reduz = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    pg.scrollTo({ left: i * pg.clientWidth, behavior: reduz ? "auto" : "smooth" });
+    marcarPagina(i);
+  }
+  function marcarPagina(i) {
+    S.paginas[S.categoria] = i;
+    document.querySelectorAll("#dots .dot").forEach((d, k) => d.setAttribute("aria-current", String(k === i)));
+    $("#pgAnt").disabled = i <= 0;
+    $("#pgProx").disabled = i >= 2;
+    $("#paginaRotulo").textContent = `Página ${i + 1} de 3 · arraste para o lado para ver mais`;
+  }
+
+  /* ---- Recomendações: ✨ Para sua mesa ---- */
+  function calcularRecomendacoes() {
+    const hist = {};
+    for (const s of pedidosVisiveis()) if (s.status !== STATUS.CANCELADO) hist[s.produtoId] = (hist[s.produtoId] || 0) + 1;
+    const agora = agoraServidor();
+    const lista = [];
+    for (const p of PRODUTOS) {
+      if (S.prefs[p.id]) continue;
+      const st = estadoProduto(p);
+      if (st.tipo !== "livre" && st.tipo !== "disponivel") continue;
+      const est = S.estatisticas[p.id] || {};
+      const janela = est.janelaInicio && agora - est.janelaInicio <= JANELA_POPULAR_MS ? (est.janelaContagem || 0) : 0;
+      const motivos = [];
+      if (st.recem) motivos.push([6, p.categoria === "doces" ? "🔥 Reposta agora" : "🔥 Acabou de sair"]);
+      if (hist[p.id]) motivos.push([2.5 * Math.min(hist[p.id], 3), "Sua mesa já pediu"]);
+      if (janela) motivos.push([1.3 * Math.min(janela, 6), "Em alta agora"]);
+      if (est.total) motivos.push([0.12 * Math.min(est.total, 25), "Popular no salão"]);
+      if (SUGESTOES_DA_CASA.includes(p.id)) motivos.push([0.9, "Sugestão da casa"]);
+      if (!motivos.length) continue;
+      const score = motivos.reduce((t, m) => t + m[0], 0);
+      const principal = motivos.slice().sort((a, b) => b[0] - a[0])[0][1];
+      lista.push({ p, score, motivo: principal });
+    }
+    lista.sort((a, b) => b.score - a.score || SUGESTOES_DA_CASA.indexOf(a.p.id) - SUGESTOES_DA_CASA.indexOf(b.p.id));
+    const porCat = {}, final = [];
+    for (const it of lista) {
+      if (final.length >= 4) break;
+      if ((porCat[it.p.categoria] || 0) >= 2) continue;
+      porCat[it.p.categoria] = (porCat[it.p.categoria] || 0) + 1;
+      final.push(it);
+    }
+    return final;
+  }
+  function renderRecs() {
+    const recs = calcularRecomendacoes();
+    const html = recs.length
+      ? recs.map(({ p, motivo }) => {
+          const st = estadoProduto(p);
+          return `<div class="rec"><div class="rec-img">${imagemProduto(p, st)}</div><div class="rec-txt"><span class="rec-nome">${esc(p.nome)}</span><span class="rec-motivo">${esc(motivo)}</span></div><button class="rec-pedir" type="button" data-rec="${p.id}" aria-label="Pedir ${esc(p.nome)}">PEDIR</button></div>`;
+        }).join("")
+      : `<p class="recs-vazio">Explore o cardápio abaixo e escolha o que sua mesa quer receber.</p>`;
+    const lista = $("#recsLista");
+    if (lista._html !== html) { lista.innerHTML = html; lista._html = html; }
+    const ocultos = Object.keys(S.prefs).filter(id => PRODUTO[id]).length;
+    const btn = $("#btnRestaurar");
+    btn.hidden = ocultos === 0;
+    btn.textContent = ocultos === 1 ? "Mostrar 1 item oculto" : `Mostrar ${ocultos} itens ocultos`;
+  }
+
+  /* ---- Folha de quantidade ---- */
+  function abrirSheet(produtoId, modo = "agora") {
+    const p = PRODUTO[produtoId];
+    if (!p) return;
+    if (!S.mesaId) { abrirTelaMesa(); return; }
+    S.sheet = { produtoId, modo: p.controlaEstoque ? modo : "livre", qtd: 1, aviso: "", avisoBom: false, enviando: false };
+    const cat = CAT[p.categoria];
+    $("#qtdCat").textContent = `${cat.emoji} ${cat.nome}`;
+    $("#qtdNome").textContent = p.nome;
+    abrir("telaQtd");
+    renderSheet();
+    setTimeout(() => $("#qtdConfirmar").focus(), 60);
+  }
+  function renderSheet() {
+    const sh = S.sheet;
+    if (!sh) return;
+    const p = PRODUTO[sh.produtoId];
+    const cat = CAT[p.categoria];
+    const st = estadoProduto(p);
+    const btn = $("#qtdConfirmar");
+
+    $("#qtdImg").innerHTML = imagemProduto(p, st);
+    if (sh.enviando) { btn.disabled = true; btn.textContent = "ENVIANDO…"; return; }
+
+    let max, info, pergunta, totalChips;
+    if (!p.controlaEstoque) {
+      max = cat.maxQtd; totalChips = cat.maxQtd;
+      info = "Sempre disponível.";
+      pergunta = `Quantas ${cat.unidade.p} sua mesa quer?`;
+    } else {
+      totalChips = FATIAS_POR_PIZZA;
+      pergunta = "Quantas fatias sua mesa quer?";
+      if (st.tipo === "carregando") { max = 0; info = "Carregando…"; }
+      else if (sh.modo === "agora" && st.tipo === "indisponivel") {
+        sh.modo = "proxima";
+        if (!sh.aviso) { sh.aviso = "Essa fatia acabou de ser solicitada por outra mesa."; sh.avisoBom = false; }
+        return renderSheet();
+      } else if (sh.modo === "proxima" && st.tipo === "disponivel") {
+        sh.modo = "agora"; sh.aviso = "Boa notícia: essa pizza voltou a ficar disponível."; sh.avisoBom = true;
+        return renderSheet();
+      } else if (sh.modo === "agora") {
+        max = st.disponivel;
+        info = `Disponíveis agora: <b>${qtdTexto(max, p)}</b>`;
+      } else {
+        max = st.livreProxima;
+        pergunta = "Quantas fatias reservar da próxima pizza?";
+        info = max > 0
+          ? "Esta pizza está temporariamente indisponível. Reserve agora e suas fatias serão as primeiras da próxima pizza."
+          : "As fatias da próxima pizza já foram todas reservadas por outras mesas. Tente novamente em instantes.";
+      }
+    }
+    if (max > 0 && sh.qtd > max) {
+      sh.qtd = max;
+      if (!sh.aviso) { sh.aviso = `A quantidade foi ajustada: agora ${max === 1 ? "só é possível 1" : "o máximo é " + max}.`; sh.avisoBom = false; }
+    }
+    if (sh.qtd < 1) sh.qtd = 1;
+
+    $("#qtdInfo").innerHTML = info;
+    $("#qtdPergunta").textContent = pergunta;
+    const chips = $("#qtdChips");
+    chips.classList.toggle("poucos", totalChips <= 6);
+    chips.innerHTML = Array.from({ length: totalChips }, (_, i) => {
+      const n = i + 1;
+      return `<button class="chip" type="button" data-qtd="${n}" aria-pressed="${n === sh.qtd && max > 0}" ${n > max ? "disabled" : ""}>${n}</button>`;
+    }).join("");
+    const aviso = $("#qtdAviso");
+    aviso.hidden = !sh.aviso;
+    aviso.textContent = sh.aviso || "";
+    aviso.classList.toggle("bom", !!sh.avisoBom);
+
+    if (!S.conectado) { btn.disabled = true; btn.textContent = "AGUARDANDO CONEXÃO…"; return; }
+    btn.disabled = max <= 0;
+    const q = qtdTexto(sh.qtd, p).toUpperCase();
+    btn.textContent = max <= 0 ? "INDISPONÍVEL" : sh.modo === "proxima" ? `RESERVAR ${q}` : `PEDIR ${q}`;
+  }
+  async function confirmarPedido() {
+    const sh = S.sheet;
+    if (!sh || sh.enviando) return;
+    if (!S.conectado) { sh.aviso = "Sem conexão no momento. Assim que reconectar, você poderá pedir."; sh.avisoBom = false; renderSheet(); return; }
+    const p = PRODUTO[sh.produtoId];
+    const qtd = sh.qtd, modo = sh.modo;
+    sh.enviando = true; sh.aviso = "";
+    renderSheet();
+    let res;
+    try {
+      res = p.controlaEstoque ? await solicitarPizza(p, qtd, modo) : await solicitarLivre(p, qtd);
+    } catch (e) {
+      console.warn("[pedido]", e);
+      res = { ok: false, motivo: "erro" };
+    }
+    if (S.sheet !== sh) return;
+    sh.enviando = false;
+    if (res.ok) {
+      fechar("telaQtd");
+      S.sheet = null;
+      if (res.status === STATUS.AGUARDANDO_REPOSICAO) {
+        mostrarConfirmacao({ titulo: "Solicitação registrada", texto: `<b>${esc(qtdTexto(qtd, p))}</b> da próxima ${esc(p.nome)} destinadas à sua mesa.` });
+      } else if (p.controlaEstoque) {
+        mostrarConfirmacao({ titulo: "Solicitação registrada", texto: `<b>${esc(qtdTexto(qtd, p))}</b> ${qtd === 1 ? "destinada" : "destinadas"} à sua mesa.` });
+      } else {
+        mostrarConfirmacao({ titulo: "Solicitação registrada", texto: `O garçom já pode ver seu pedido: <b>${esc(qtdTexto(qtd, p))}</b> de ${esc(p.nome)}.` });
+      }
+      vibrar(30);
+      return;
+    }
+    switch (res.motivo) {
+      case "esgotado":
+        sh.modo = "proxima"; sh.aviso = "Essa fatia acabou de ser solicitada por outra mesa."; break;
+      case "insuficiente":
+        sh.qtd = Math.max(1, res.restante || 1);
+        sh.aviso = `Outra mesa acabou de pedir. Agora ${res.restante === 1 ? "resta 1 fatia" : `restam ${res.restante} fatias`}.`; break;
+      case "voltou":
+        sh.modo = "agora"; sh.aviso = "Essa pizza voltou a ficar disponível. Confirme seu pedido."; sh.avisoBom = true; break;
+      case "fila_cheia":
+        sh.aviso = "As fatias da próxima pizza acabaram de ser reservadas por outras mesas."; break;
+      case "fila_insuficiente":
+        sh.qtd = Math.max(1, res.restante || 1);
+        sh.aviso = `Ainda dá para reservar ${res.restante === 1 ? "1 fatia" : res.restante + " fatias"} da próxima pizza.`; break;
+      default:
+        sh.aviso = "Não foi possível registrar agora. Tente de novo.";
+    }
+    if (!["voltou"].includes(res.motivo)) sh.avisoBom = false;
+    renderSheet();
+  }
+
+  /* ---- Meus pedidos ---- */
+  function pedidosVisiveis() {
+    const inicio = Number(S.mesaInfo?.inicioAtendimento) || 0;
+    const agora = agoraServidor();
+    return Object.values(S.minhas).filter(s => {
+      const criado = Number(s.criadoEm) || agora;
+      if (criado < inicio - 5000) return false;
+      const fim = s.status === STATUS.ATENDIDO || s.status === STATUS.CANCELADO;
+      if (fim && agora - (Number(s.atualizadoEm) || criado) > 6 * 3600e3) return false;
+      return true;
+    });
+  }
+  function renderBarraPedidos() {
+    const vis = pedidosVisiveis();
+    const ativos = vis.filter(s => STATUS_ATIVOS.includes(s.status));
+    const badge = $("#barraBadge");
+    badge.hidden = ativos.length === 0;
+    badge.textContent = String(ativos.length);
+    const emAt = ativos.filter(s => s.status === STATUS.EM_ATENDIMENTO).length;
+    const agu = ativos.filter(s => s.status === STATUS.AGUARDANDO_REPOSICAO).length;
+    let resumo;
+    if (!vis.length) resumo = "Nenhum pedido ainda";
+    else if (!ativos.length) resumo = "Todos os pedidos foram atendidos";
+    else {
+      const partes = [`${ativos.length} em andamento`];
+      if (emAt) partes.push(`${emAt} com o garçom`);
+      if (agu) partes.push(`${agu} aguardando reposição`);
+      resumo = partes.join(", ");
+    }
+    $("#barraResumo").textContent = resumo;
+  }
+  function dicaPedido(s) {
+    switch (s.status) {
+      case STATUS.SOLICITADO: return s.prioridade ? "🔥 Acabou de sair: destinadas à sua mesa." : "O garçom já pode ver seu pedido.";
+      case STATUS.AGUARDANDO_REPOSICAO: return "Suas fatias serão as primeiras da próxima pizza.";
+      case STATUS.EM_ATENDIMENTO: return "O garçom está cuidando do seu pedido.";
+      case STATUS.ATENDIDO: return "Entregue. Bom apetite!";
+      case STATUS.CANCELADO: return s.canceladoPor === "cliente" ? "Cancelado pela mesa." : "Cancelado pela equipe.";
+      default: return "";
+    }
+  }
+  function htmlPedido(s) {
+    const p = PRODUTO[s.produtoId];
+    const qtd = p ? qtdTexto(s.quantidade, p) : `${s.quantidade}`;
+    const podeCancelar = CANCELAVEIS.includes(s.status);
+    const conf = S.confirmandoCancel === s.id;
+    return `<div class="pedido">
+      <span class="pedido-emoji" aria-hidden="true">${esc(s.emoji || p?.emoji || "🍽️")}</span>
+      <span class="pedido-nome">${esc(s.produtoNome || p?.nome || "")}</span>
+      <span class="pedido-status st-${esc(s.status)}">${esc(STATUS_ROTULO[s.status] || s.status)}</span>
+      <span class="pedido-qtd">${esc(qtd)}, ${esc(tempoRel(s.criadoEm))}</span>
+      <span></span>
+      <span class="pedido-dica">${esc(dicaPedido(s))}</span>
+      ${podeCancelar ? `<span class="pedido-acao"><button class="btn-cancelar${conf ? " confirmar" : ""}" type="button" data-cancelar="${esc(s.id)}">${conf ? "Toque de novo para cancelar" : "Cancelar pedido"}</button></span>` : ""}
+    </div>`;
+  }
+  function renderPedidos() {
+    const vis = pedidosVisiveis().sort((a, b) => (b.criadoEm || 0) - (a.criadoEm || 0));
+    const ativos = vis.filter(s => STATUS_ATIVOS.includes(s.status));
+    const fim = vis.filter(s => !STATUS_ATIVOS.includes(s.status));
+    $("#pedidosSub").textContent = S.mesaNumero ? `Mesa ${doisDig(S.mesaNumero)}. Atualiza sozinho, sem recarregar.` : "";
+    let html = "";
+    if (!vis.length) {
+      html = `<div class="vazio"><strong>Sua mesa ainda não pediu nada.</strong>Escolha um item no cardápio e toque em PEDIR.</div>`;
+    } else {
+      if (ativos.length) html += `<div class="pedidos-grupo"><h3>Em andamento</h3>${ativos.map(htmlPedido).join("")}</div>`;
+      if (fim.length) html += `<div class="pedidos-grupo"><h3>Finalizados</h3>${fim.map(htmlPedido).join("")}</div>`;
+    }
+    const el = $("#pedidosLista");
+    if (el._html !== html) { el.innerHTML = html; el._html = html; }
+  }
+
+  /* ---- Atividade ---- */
+  function renderAtividade() {
+    const vista = Number(ls.get("rodizio.atividadeVista")) || 0;
+    const novas = S.atividade.some(a => (Number(a.criadoEm) || 0) > vista);
+    $("#pontoAtividade").hidden = !novas || !$("#telaAtividade").hidden;
+    const feed = $("#feed");
+    feed.innerHTML = S.atividade.length
+      ? S.atividade.map(a => `<li><span class="f-emoji" aria-hidden="true">${esc(a.emoji || "🍕")}</span><span class="f-txt">${esc(a.texto)}<span class="f-hora">${esc(tempoRel(a.criadoEm))}</span></span></li>`).join("")
+      : `<li class="vazio" style="border:0;display:block"><strong>Tudo calmo por enquanto.</strong>Quando uma pizza sair do forno, você verá aqui.</li>`;
+  }
+
+  /* ---- Mesas ---- */
+  function abrirTelaMesa() {
+    $("#mesasGrid").innerHTML = Array.from({ length: TOTAL_MESAS }, (_, i) =>
+      `<button class="mesa-op" type="button" data-mesa="${i + 1}" aria-current="${S.mesaNumero === i + 1}" aria-label="Mesa ${doisDig(i + 1)}">${doisDig(i + 1)}</button>`
+    ).join("");
+    $("#mesaVoltar").hidden = !S.mesaId;
+    abrir("telaMesa");
+  }
+  function selecionarMesa(n) {
+    n = Number(n);
+    if (!Number.isInteger(n) || n < 1 || n > TOTAL_MESAS) return;
+    const antiga = S.mesaId;
+    const novo = mesaIdDe(n);
+    if (antiga && antiga !== novo) sairDaMesa(antiga);
+    S.mesaNumero = n; S.mesaId = novo;
+    ls.set("rodizio.mesa", String(n));
+    $("#mesaNum").textContent = doisDig(n);
+    fechar("telaMesa");
+    if (db && antiga !== novo) { ouvirMesa(); registrarPresenca(); }
+    agendarRender();
+    if (!ls.get("rodizio.comoFuncionaVisto")) abrir("telaComo");
+  }
+
+  /* ---- Não recomendar (por mesa) ---- */
+  async function alternarNaoRecomendar(produtoId) {
+    if (!S.mesaId) return;
+    const p = PRODUTO[produtoId];
+    const ativo = !!S.prefs[produtoId];
+    const caminho = r(`preferencias/${S.mesaId}/naoRecomendar/${produtoId}`);
+    try {
+      if (ativo) { await remove(caminho); toast(`${p.nome} voltou às sugestões da sua mesa.`); }
+      else {
+        await set(caminho, true);
+        toast(`Não vamos mais sugerir ${p.nome} para sua mesa.`, "Desfazer", () => remove(caminho).catch(() => {}));
+      }
+    } catch (e) { console.warn(e); toast("Não foi possível salvar agora. Tente de novo."); }
+  }
+
+  /* ---- Camadas, toasts e confirmação ---- */
+  const pilha = [];
+  function abrir(id) { const el = document.getElementById(id); el.hidden = false; if (!pilha.includes(id)) pilha.push(id); document.body.style.overflow = "hidden"; }
+  function fechar(id) {
+    const el = document.getElementById(id); el.hidden = true;
+    const i = pilha.indexOf(id); if (i >= 0) pilha.splice(i, 1);
+    if (!pilha.length) document.body.style.overflow = "";
+    if (id === "telaQtd") S.sheet = null;
+    if (id === "telaAtividade") renderAtividade();
+  }
+  let timerOk = null;
+  function mostrarConfirmacao({ titulo, texto, fogo = false, icone = "✓" }) {
+    $("#okCaixa").classList.toggle("fogo", fogo);
+    $("#okIcone").textContent = icone;
+    $("#okTitulo").textContent = titulo;
+    $("#okTexto").innerHTML = texto;
+    abrir("telaOk");
+    clearTimeout(timerOk);
+    timerOk = setTimeout(() => fechar("telaOk"), fogo ? 7000 : 2800);
+  }
+  function toast(msg, acao, fn) {
+    const box = $("#toasts");
+    const t = document.createElement("div");
+    t.className = "toast";
+    t.innerHTML = `<span>${esc(msg)}</span>${acao ? `<button type="button">${esc(acao)}</button>` : ""}`;
+    if (acao) t.querySelector("button").onclick = () => { fn?.(); t.remove(); };
+    box.appendChild(t);
+    while (box.children.length > 3) box.firstChild.remove();
+    setTimeout(() => t.remove(), acao ? 6000 : 4200);
+  }
+
+  /* ============================================================================
+     11) EVENTOS
+     ============================================================================ */
+  function ligarEventos() {
+    $("#abas").addEventListener("click", e => { const b = e.target.closest("[data-cat]"); if (b) trocarCategoria(b.dataset.cat); });
+
+    const pager = $("#pager");
+    let arrastou = false, drag = null, tScroll = null;
+    pager.addEventListener("scroll", () => { clearTimeout(tScroll); tScroll = setTimeout(() => marcarPagina(paginaAtual()), 80); }, { passive: true });
+    pager.addEventListener("pointerdown", e => { if (e.pointerType === "mouse") { drag = { x: e.clientX }; arrastou = false; } });
+    window.addEventListener("pointerup", e => {
+      if (!drag) return;
+      const dx = e.clientX - drag.x; drag = null;
+      if (Math.abs(dx) > 50) { arrastou = true; irPagina(paginaAtual() + (dx < 0 ? 1 : -1)); setTimeout(() => arrastou = false, 50); }
+    });
+    pager.addEventListener("click", e => {
+      if (arrastou) return;
+      const b = e.target.closest("button[data-acao]");
+      if (!b || b.disabled) return;
+      const id = b.closest(".card")?.dataset.id;
+      if (!id) return;
+      if (b.dataset.acao === "pedir") abrirSheet(id, "agora");
+      else if (b.dataset.acao === "proxima") abrirSheet(id, "proxima");
+      else if (b.dataset.acao === "naorec") alternarNaoRecomendar(id);
+    });
+    $("#pgAnt").onclick = () => irPagina(paginaAtual() - 1);
+    $("#pgProx").onclick = () => irPagina(paginaAtual() + 1);
+    $("#dots").addEventListener("click", e => { const d = e.target.closest("[data-pag]"); if (d) irPagina(Number(d.dataset.pag)); });
+    window.addEventListener("resize", () => { const pg = $("#pager"); pg.scrollLeft = S.paginas[S.categoria] * pg.clientWidth; });
+
+    $("#recsLista").addEventListener("click", e => {
+      const b = e.target.closest("[data-rec]"); if (!b) return;
+      const p = PRODUTO[b.dataset.rec];
+      if (p) abrirSheet(p.id, estadoProduto(p).tipo === "indisponivel" ? "proxima" : "agora");
+    });
+    $("#btnRestaurar").onclick = () => {
+      if (!S.mesaId) return;
+      remove(r(`preferencias/${S.mesaId}/naoRecomendar`)).then(() => toast("Todas as sugestões voltaram a aparecer.")).catch(() => {});
+    };
+
+    $("#qtdChips").addEventListener("click", e => {
+      const c = e.target.closest("[data-qtd]"); if (!c || c.disabled || !S.sheet) return;
+      S.sheet.qtd = Number(c.dataset.qtd); S.sheet.aviso = ""; renderSheet();
+    });
+    $("#qtdConfirmar").onclick = confirmarPedido;
+
+    $("#btnPedidos").onclick = () => { S.confirmandoCancel = null; renderPedidos(); abrir("telaPedidos"); };
+    $("#pedidosLista").addEventListener("click", async e => {
+      const b = e.target.closest("[data-cancelar]"); if (!b) return;
+      const id = b.dataset.cancelar;
+      if (S.confirmandoCancel !== id) {
+        S.confirmandoCancel = id; renderPedidos();
+        setTimeout(() => { if (S.confirmandoCancel === id) { S.confirmandoCancel = null; renderPedidos(); } }, 4000);
+        return;
+      }
+      S.confirmandoCancel = null;
+      b.disabled = true; b.textContent = "Cancelando…";
+      try { await cancelarSolicitacao(id); } catch (err) { console.warn(err); toast("Não foi possível cancelar agora. Tente de novo."); }
+      renderPedidos();
+    });
+
+    $("#btnAtividade").onclick = () => {
+      ls.set("rodizio.atividadeVista", String(agoraServidor()));
+      abrir("telaAtividade"); renderAtividade();
+    };
+    $("#btnAjuda").onclick = () => abrir("telaComo");
+    $("#comoOk").onclick = () => { ls.set("rodizio.comoFuncionaVisto", "1"); fechar("telaComo"); };
+
+    $("#btnTrocarMesa").onclick = () => {
+      $("#trocarTexto").textContent = S.mesaNumero ? `Os pedidos já feitos continuam registrados na Mesa ${doisDig(S.mesaNumero)}.` : "";
+      abrir("telaTrocar");
+    };
+    $("#trocarSim").onclick = () => { fechar("telaTrocar"); abrirTelaMesa(); };
+    $("#mesasGrid").addEventListener("click", e => { const b = e.target.closest("[data-mesa]"); if (b) selecionarMesa(b.dataset.mesa); });
+    $("#mesaVoltar").onclick = () => fechar("telaMesa");
+
+    $("#okFechar").onclick = () => fechar("telaOk");
+    $("#telaOk").addEventListener("click", e => { if (e.target.id === "telaOk") fechar("telaOk"); });
+
+    document.querySelectorAll("[data-fechar]").forEach(b => b.addEventListener("click", () => fechar(b.dataset.fechar)));
+    ["telaQtd", "telaPedidos", "telaAtividade", "telaTrocar"].forEach(id =>
+      document.getElementById(id).addEventListener("click", e => { if (e.target.id === id) fechar(id); })
+    );
+    document.addEventListener("keydown", e => {
+      if (e.key !== "Escape" || !pilha.length) return;
+      const topo = pilha[pilha.length - 1];
+      if (topo === "telaMesa" && !S.mesaId) return;
+      if (topo === "telaComo") ls.set("rodizio.comoFuncionaVisto", "1");
+      fechar(topo);
+    });
+  }
+
+  /* Tarefas periódicas: selos "acabou de sair", tempos relativos e verificação de reposição */
+  function tick() {
+    if (!db) return;
+    for (const p of PIZZAS) {
+      const e = S.estoque[p.id];
+      if (e && (Number(e.disponivel) || 0) === 0 && (!e.zeradoEm || agoraServidor() - e.zeradoEm >= REPOSICAO_MS)) reporPizza(p.id);
+    }
+    agendarRender();
+    if (!$("#telaAtividade").hidden) renderAtividade();
+  }
+
+  /* ============================================================================
+     12) INICIALIZAÇÃO
+     ============================================================================ */
+  function iniciar() {
+    $("#marcaNome").textContent = NOME_RESTAURANTE;
+    $("#marcaGrande").textContent = `🍕 ${NOME_RESTAURANTE}`;
+    montarAbas();
+    renderCardapio();
+    ligarEventos();
+    renderRecs();
+    renderBarraPedidos();
+    renderAtividade();
+
+    const configPendente = Object.values(firebaseConfig).some(v => typeof v !== "string" || !v.trim() || v.includes("COLE_AQUI"));
+    if (configPendente) {
+      console.warn("[rodízio] Preencha o firebaseConfig no início do <script> do cliente.html.");
+      abrir("telaConfig");
+      return;
+    }
+    try {
+      const app = initializeApp(firebaseConfig);
+      db = getDatabase(app);
+    } catch (e) {
+      console.error("[rodízio] Falha ao iniciar o Firebase. Verifique o firebaseConfig (principalmente databaseURL).", e);
+      abrir("telaConfig");
+      return;
+    }
+    ouvirGlobais();
+
+    const salva = Number(ls.get("rodizio.mesa"));
+    if (Number.isInteger(salva) && salva >= 1 && salva <= TOTAL_MESAS) selecionarMesa(salva);
+    else abrirTelaMesa();
+
+    setInterval(tick, 5000);
+  }
+  iniciar();
+
+}
+
+/* ===========================================================================
+   APLICAÇÃO DA EQUIPE (operação: Garçom + Cozinha/Gestão)
+   =========================================================================== */
+function appOperacao() {
+
+  /* ============================================================================
+     operacao.html — Interface da EQUIPE (Garçom + Cozinha/Gestão)
+     ----------------------------------------------------------------------------
+     Mesmo sistema do cliente.html:
+         cliente.html  <->  Firebase Realtime Database  <->  operacao.html
+
+     ⚠ PROTÓTIPO: sem autenticação e com regras abertas no banco.
+       Essa configuração NÃO é adequada para produção.
+     ============================================================================ */
+
+  /* ============================================================================
+     1) CONFIGURAÇÃO DO FIREBASE — USE EXATAMENTE O MESMO DO cliente.html
+     ============================================================================ */
+  /* firebaseConfig: definido UMA vez no topo do arquivo */
+
+  const NOME_RESTAURANTE = "Rodízio";
+
+
+  /* ============================================================================
+     2) ESTRUTURA DE DADOS COMPARTILHADA (idêntica à do cliente.html)
+     ----------------------------------------------------------------------------
+     /rodizio/config, /categorias, /produtos      catálogo (mesmos IDs)
+     /rodizio/estoque/{produtoId}                  disponivel, capacidade, ciclo, zeradoEm, repostoEm,
+                                                   reservas/{solicitacaoId}, fila/{solicitacaoId}
+     /rodizio/solicitacoes/{solicitacaoId}         status, mesaId, produtoId, quantidade, historico…
+     /rodizio/mesas/{mesaId}                       numero, rotulo, inicioAtendimento, dispositivos
+     /rodizio/preferencias/{mesaId}/naoRecomendar  (usado pelo cliente; limpo ao liberar mesa)
+     /rodizio/estatisticas/{produtoId}             (usado pelas recomendações do cliente)
+     /rodizio/atividade                            feed PÚBLICO dos clientes (sem mesas)
+
+     Campos que o operacao.html ACRESCENTA às solicitações (o cliente ignora):
+         atendimentoIniciadoEm, atendidoEm,
+         consumo: { quantidade, ciclo, em }   registro do consumo ao concluir
+         canceladoPor: 'operacao' (cancelamento administrativo)
+
+     Único nó novo:
+     /rodizio/eventosEstoque/{chave}   registro INTERNO da equipe: esgotada / reposta
+         chave determinística (ex.: sal_calabresa_cebola_rep_3), então vários
+         dispositivos podem gravar sem duplicar. Não é exibido aos clientes.
+         { tipo:'esgotada'|'reposta', produtoId, produtoNome, ciclo, em, manual? }
+
+     A "Atividade do rodízio" da equipe é montada a partir do historico das
+     solicitações (quem pediu, atendimento, conclusão, cancelamento) + eventosEstoque.
+     ============================================================================ */
+
+  const RAIZ = "rodizio";
+  const VERSAO_CATALOGO = 1;
+  const FATIAS_POR_PIZZA = 8;
+  const REPOSICAO_MS = 60_000;             // interno: nunca exibido
+  const DESTAQUE_REPOSTA_MS = 2 * 60_000;  // igual ao cliente.html
+  const RECENTE_GESTAO_MS = 5 * 60_000;    // lista "Repostas recentemente"
+  const POUCAS_FATIAS = 2;
+  const TOTAL_MESAS = 15;
+
+  const STATUS = {
+    SOLICITADO: "SOLICITADO",
+    EM_ATENDIMENTO: "EM_ATENDIMENTO",
+    ATENDIDO: "ATENDIDO",
+    AGUARDANDO_REPOSICAO: "AGUARDANDO_REPOSICAO",
+    CANCELADO: "CANCELADO"
+  };
+  const ROTULO = {
+    SOLICITADO: "SOLICITADO", EM_ATENDIMENTO: "EM ATENDIMENTO", ATENDIDO: "ATENDIDO",
+    AGUARDANDO_REPOSICAO: "AGUARDANDO REPOSIÇÃO", CANCELADO: "CANCELADO"
+  };
+  const ATIVOS = [STATUS.SOLICITADO, STATUS.EM_ATENDIMENTO, STATUS.AGUARDANDO_REPOSICAO];
+
+  /* ============================================================================
+     3) CATÁLOGO — mesmos IDs, nomes, ordens e emojis do cliente.html
+     ============================================================================ */
+  const CATEGORIAS = [
+    { id: "salgadas", nome: "Pizzas salgadas", item: "Pizza salgada", emoji: "🍕", ordem: 1, controlaEstoque: true, unidade: { id: "fatia", s: "fatia", p: "fatias" } },
+    { id: "doces", nome: "Pizzas doces", item: "Pizza doce", emoji: "🍫", ordem: 2, controlaEstoque: true, unidade: { id: "fatia", s: "fatia", p: "fatias" } },
+    { id: "bebidas", nome: "Bebidas", item: "Bebida", emoji: "🥤", ordem: 3, controlaEstoque: false, unidade: { id: "unidade", s: "unidade", p: "unidades" } },
+    { id: "diversos", nome: "Diversos", item: "Diversos", emoji: "🍝", ordem: 4, controlaEstoque: false, unidade: { id: "porcao", s: "porção", p: "porções" } }
+  ];
+  const CAT = Object.fromEntries(CATEGORIAS.map(c => [c.id, c]));
+
+  const SALGADAS = [
+    ["sal_calabresa_cebola", "Calabresa com cebola"], ["sal_mussarela", "Mussarela"], ["sal_presunto_queijo", "Presunto e queijo"],
+    ["sal_frango_catupiry", "Frango com catupiry"], ["sal_portuguesa", "Portuguesa"], ["sal_marguerita", "Marguerita"],
+    ["sal_quatro_queijos", "Quatro queijos"], ["sal_bacon", "Bacon"], ["sal_pepperoni", "Pepperoni"],
+    ["sal_carne_seca_catupiry", "Carne seca com catupiry"], ["sal_frango_bacon", "Frango com bacon"], ["sal_milho_bacon", "Milho com bacon"],
+    ["sal_napolitana", "Napolitana"], ["sal_atum_cebola", "Atum com cebola"], ["sal_palmito", "Palmito"],
+    ["sal_lombo_canadense", "Lombo canadense"], ["sal_camarao_catupiry", "Camarão com catupiry"], ["sal_strogonoff_carne", "Strogonoff de carne"]
+  ];
+  const DOCES = [
+    ["doc_chocolate_leite", "Chocolate ao leite"], ["doc_chocolate_branco", "Chocolate branco"], ["doc_chocolate_morango", "Chocolate com morango"],
+    ["doc_chocolate_banana", "Chocolate com banana"], ["doc_prestigio", "Prestígio"], ["doc_banana_canela", "Banana com canela"],
+    ["doc_banana_chocolate", "Banana com chocolate"], ["doc_romeu_julieta", "Romeu e Julieta"], ["doc_doce_leite", "Doce de leite"],
+    ["doc_doce_leite_coco", "Doce de leite com coco"], ["doc_doce_leite_banana", "Doce de leite com banana"], ["doc_nutella_morango", "Nutella com morango"],
+    ["doc_nutella_banana", "Nutella com banana"], ["doc_ovomaltine", "Ovomaltine"], ["doc_mms_chocolate", "M&M's com chocolate"],
+    ["doc_kinder", "Kinder"], ["doc_pacoca_chocolate", "Paçoca com chocolate"], ["doc_cookies_chocolate", "Cookies com chocolate"]
+  ];
+  const BEBIDAS = [
+    ["beb_coca_cola", "Coca-Cola", "🥤"], ["beb_coca_cola_zero", "Coca-Cola Zero", "🥤"], ["beb_guarana", "Guaraná", "🥤"],
+    ["beb_guarana_zero", "Guaraná Zero", "🥤"], ["beb_fanta_laranja", "Fanta Laranja", "🥤"], ["beb_fanta_uva", "Fanta Uva", "🥤"],
+    ["beb_sprite", "Sprite", "🥤"], ["beb_sprite_zero", "Sprite Zero", "🥤"], ["beb_soda_italiana", "Soda italiana", "🍹"],
+    ["beb_agua_mineral", "Água mineral", "💧"], ["beb_agua_com_gas", "Água com gás", "💧"], ["beb_suco_laranja", "Suco de laranja", "🧃"],
+    ["beb_suco_maracuja", "Suco de maracujá", "🧃"], ["beb_suco_morango", "Suco de morango", "🧃"], ["beb_suco_abacaxi", "Suco de abacaxi", "🧃"],
+    ["beb_limonada", "Limonada", "🍋"], ["beb_cha_gelado", "Chá gelado", "🧊"], ["beb_refri_limao", "Refrigerante de limão", "🥤"]
+  ];
+  const DIVERSOS = [
+    ["div_batata_frita", "Batata frita", "🍟"], ["div_batata_rustica", "Batata rústica", "🥔"], ["div_aneis_cebola", "Anéis de cebola", "🧅"],
+    ["div_macarronada_vermelho", "Macarronada ao molho vermelho", "🍝"], ["div_macarronada_bolonhesa", "Macarronada à bolonhesa", "🍝"],
+    ["div_macarronada_branco", "Macarronada ao molho branco", "🍝"], ["div_lasanha_bolonhesa", "Lasanha à bolonhesa", "🥘"],
+    ["div_lasanha_frango", "Lasanha de frango", "🥘"], ["div_nhoque_molho", "Nhoque ao molho", "🍲"], ["div_mini_hamburguer", "Mini hambúrguer", "🍔"],
+    ["div_mini_cachorro_quente", "Mini cachorro-quente", "🌭"], ["div_mini_pastel", "Mini pastel", "🥟"], ["div_nuggets_frango", "Nuggets de frango", "🍗"],
+    ["div_coxinha", "Coxinha", "🧆"], ["div_bolinha_queijo", "Bolinha de queijo", "🧀"], ["div_brownie", "Brownie", "🍫"],
+    ["div_pudim", "Pudim", "🍮"], ["div_churros_doce_leite", "Churros com doce de leite", "🥨"]
+  ];
+  const PRODUTOS = [
+    ...SALGADAS.map(([id, nome], i) => ({ id, nome, categoria: "salgadas", ordem: i + 1, controlaEstoque: true, emoji: "🍕" })),
+    ...DOCES.map(([id, nome], i) => ({ id, nome, categoria: "doces", ordem: i + 1, controlaEstoque: true, emoji: "🍫" })),
+    ...BEBIDAS.map(([id, nome, emoji], i) => ({ id, nome, categoria: "bebidas", ordem: i + 1, controlaEstoque: false, emoji })),
+    ...DIVERSOS.map(([id, nome, emoji], i) => ({ id, nome, categoria: "diversos", ordem: i + 1, controlaEstoque: false, emoji }))
+  ];
+  const PRODUTO = Object.fromEntries(PRODUTOS.map(p => [p.id, p]));
+  const PIZZAS = PRODUTOS.filter(p => p.controlaEstoque);
+
+  /* ============================================================================
+     4) UTILITÁRIOS
+     ============================================================================ */
+  const $ = (s) => document.querySelector(s);
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const ls = {
+    get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch {} }
+  };
+  const mesaIdDe = (n) => "mesa_" + String(n).padStart(2, "0");
+  const doisDig = (n) => String(n).padStart(2, "0");
+  function numeroMesa(s) { return Number(s?.mesaNumero) || Number(String(s?.mesaId || "").replace(/\D/g, "")) || 0; }
+  function rotuloMesa(s) { return "Mesa " + doisDig(numeroMesa(s)); }
+  function unidade(catId) { return (CAT[catId] || CAT.bebidas).unidade; }
+  function qtdTexto(n, catId) { const u = unidade(catId); return `${n} ${n === 1 ? u.s : u.p}`; }
+  function nomeDe(s) { return s?.produtoNome || PRODUTO[s?.produtoId]?.nome || "Produto"; }
+  function emojiDe(s) { return s?.emoji || PRODUTO[s?.produtoId]?.emoji || "🍽️"; }
+  function catDe(s) { return s?.categoria || PRODUTO[s?.produtoId]?.categoria || "bebidas"; }
+  function somaFila(fila) { return Object.values(fila || {}).reduce((t, f) => t + (Number(f?.quantidade) || 0), 0); }
+  function hora(ts) { if (!ts) return "--:--"; return new Date(ts).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }); }
+  function espera(ts) {
+    if (!ts) return { txt: "agora", nivel: "" };
+    const m = Math.floor(Math.max(0, agoraServidor() - ts) / 60000);
+    return { txt: m < 1 ? "agora" : `há ${m} min`, nivel: m >= 10 ? "alto" : m >= 5 ? "medio" : "" };
+  }
+  function gerarId() {
+    if (window.crypto?.randomUUID) return crypto.randomUUID();
+    return Date.now().toString(36) + Math.random().toString(36).slice(2);
+  }
+
+  /* ============================================================================
+     5) ESTADO
+     ============================================================================ */
+  const S = {
+    sessaoId: ls.get("rodizio.op.sessaoId") || (() => { const id = gerarId(); ls.set("rodizio.op.sessaoId", id); return id; })(),
+    conectado: false, jaConectou: false, offset: 0,
+    estoque: {}, estoqueCarregado: false,
+    sol: {}, solCarregadas: false, statusVisto: {},
+    mesas: {},
+    eventos: {}, eventosCarregados: false,
+    modo: ls.get("rodizio.op.modo") === "gestao" ? "gestao" : "garcom",
+    visao: ls.get("rodizio.op.visao") === "produto" ? "produto" : "pedido",
+    filtro: ls.get("rodizio.op.filtro") || "todas",
+    som: ls.get("rodizio.op.som") === "1",
+    ocupados: new Set(),        // solicitações com ação em andamento
+    confirmandoCancel: null,
+    novos: new Map(),           // destaque visual de chegada
+    emAndamento: new Set(),
+    timers: {},
+    mesaAberta: null
+  };
+  let db = null;
+  const r = (c) => ref(db, `${RAIZ}/${c}`);
+  const agoraServidor = () => Date.now() + (S.offset || 0);
+  const novaChave = () => push(ref(db, `${RAIZ}/_chaves`)).key; // gera chave sem gravar
+
+  /* ============================================================================
+     6) REGRAS DE ESTOQUE (MESMA LÓGICA DO cliente.html — sempre com transação)
+     ============================================================================ */
+  function alocarFila(cur, livres, promovidos) {
+    const fila = cur.fila || {};
+    const ordem = Object.entries(fila).sort((a, b) => (a[1]?.criadoEm || 0) - (b[1]?.criadoEm || 0));
+    for (const [id, f] of ordem) {
+      if (livres <= 0) break;
+      const q = Number(f?.quantidade) || 0;
+      if (q > 0 && q <= livres) {
+        cur.reservas = cur.reservas || {};
+        cur.reservas[id] = { mesaId: f.mesaId, quantidade: q, ciclo: cur.ciclo, reservadoEm: agoraServidor(), prioridade: true };
+        delete fila[id];
+        livres -= q;
+        promovidos.push(id);
+      }
+    }
+    cur.fila = fila;
+    return livres;
+  }
+
+  /* Feed PÚBLICO (clientes): igual ao cliente.html, sem dados de mesa. */
+  function registrarAtividadePublica(tipo, p) {
+    if (!p) return;
+    let emoji = CAT[p.categoria].emoji, texto;
+    if (tipo === "reposta") {
+      if (p.categoria === "salgadas") { emoji = "🔥"; texto = `${p.nome} acabou de sair.`; }
+      else { emoji = "🍫"; texto = `${p.nome} voltou a ficar disponível.`; }
+    } else if (tipo === "voltou") texto = `${p.nome} voltou a ficar disponível.`;
+    else return;
+    Promise.resolve(push(r("atividade"), { tipo, produtoId: p.id, produtoNome: p.nome, categoria: p.categoria, emoji, texto, criadoEm: serverTimestamp() })).catch(() => {});
+  }
+
+  /* Reposição automática (1 minuto após zerar). Idempotente entre dispositivos. */
+  async function reporPizza(produtoId) {
+    if (!db || !S.conectado || S.emAndamento.has("repor:" + produtoId)) return;
+    S.emAndamento.add("repor:" + produtoId);
+    let promovidos = [], repos = false;
+    try {
+      const tx = await runTransaction(r(`estoque/${produtoId}`), (cur) => {
+        promovidos = []; repos = false;
+        if (cur === null) return cur;
+        if ((Number(cur.disponivel) || 0) > 0) return;
+        const agora = agoraServidor();
+        if (!cur.zeradoEm) { cur.zeradoEm = agora; return cur; }
+        if (agora - cur.zeradoEm < REPOSICAO_MS) return;
+        const cap = Number(cur.capacidade) || FATIAS_POR_PIZZA;
+        cur.ciclo = (cur.ciclo || 1) + 1;
+        const livres = alocarFila(cur, cap, promovidos);
+        cur.disponivel = livres;
+        cur.repostoEm = agora;
+        cur.zeradoEm = livres === 0 ? agora : null;
+        cur.atualizadoEm = agora;
+        repos = true;
+        return cur;
+      }, { applyLocally: false });
+      if (tx.committed && repos) {
+        promovidos.forEach(id => promoverSolicitacao(id));
+        registrarAtividadePublica("reposta", PRODUTO[produtoId]);
+      }
+    } catch (e) { console.warn("[reposição]", e); }
+    finally { S.emAndamento.delete("repor:" + produtoId); }
+  }
+
+  /* Reposição MANUAL (área de demonstração): coloca uma pizza nova agora. */
+  async function reporManual(produtoId) {
+    let promovidos = [], repos = false;
+    const tx = await runTransaction(r(`estoque/${produtoId}`), (cur) => {
+      promovidos = []; repos = false;
+      if (cur === null) return cur;
+      const agora = agoraServidor();
+      const cap = Number(cur.capacidade) || FATIAS_POR_PIZZA;
+      cur.ciclo = (cur.ciclo || 1) + 1;
+      const livres = alocarFila(cur, cap, promovidos);
+      cur.disponivel = livres;
+      cur.repostoEm = agora;
+      cur.reposicaoManualEm = agora;
+      cur.zeradoEm = livres === 0 ? agora : null;
+      cur.atualizadoEm = agora;
+      repos = true;
+      return cur;
+    }, { applyLocally: false });
+    if (!tx.committed || !repos) throw new Error("reposição não aplicada");
+    promovidos.forEach(id => promoverSolicitacao(id));
+    registrarAtividadePublica("reposta", PRODUTO[produtoId]);
+    return promovidos.length;
+  }
+
+  async function promoverSolicitacao(solId) {
+    const chave = "promover:" + solId;
+    if (S.emAndamento.has(chave)) return;
+    S.emAndamento.add(chave);
+    try {
+      await runTransaction(r(`solicitacoes/${solId}`), (cur) => {
+        if (cur === null) return cur;
+        if (cur.status !== STATUS.AGUARDANDO_REPOSICAO) return;
+        const agora = agoraServidor();
+        cur.status = STATUS.SOLICITADO;
+        cur.prioridade = true;
+        cur.liberadoEm = agora;
+        cur.atualizadoEm = agora;
+        cur.atualizadoPor = "sistema";
+        cur.historico = cur.historico || {};
+        cur.historico[novaChave()] = { status: STATUS.SOLICITADO, em: agora, por: "sistema" };
+        return cur;
+      }, { applyLocally: false });
+    } catch (e) { console.warn("[promover]", e); }
+    finally { S.emAndamento.delete(chave); }
+  }
+
+  /* Devolve fatias de uma solicitação cancelada (mesma regra do cliente). */
+  async function liberarEstoque(produtoId, solId) {
+    let promovidos = [], voltou = false;
+    const tx = await runTransaction(r(`estoque/${produtoId}`), (cur) => {
+      promovidos = []; voltou = false;
+      if (cur === null) return cur;
+      const agora = agoraServidor();
+      if (cur.fila && cur.fila[solId]) { delete cur.fila[solId]; cur.atualizadoEm = agora; return cur; }
+      const res = cur.reservas && cur.reservas[solId];
+      if (!res) return;
+      delete cur.reservas[solId];
+      const cap = Number(cur.capacidade) || FATIAS_POR_PIZZA;
+      if ((res.ciclo || 1) === (cur.ciclo || 1)) {
+        const antes = Math.max(0, Number(cur.disponivel) || 0);
+        let livres = Math.min(cap, antes + (Number(res.quantidade) || 0)) - antes;
+        livres = alocarFila(cur, livres, promovidos);
+        cur.disponivel = antes + livres;
+        if (cur.disponivel > 0) { cur.zeradoEm = null; if (antes === 0) voltou = true; }
+      }
+      cur.atualizadoEm = agora;
+      return cur;
+    }, { applyLocally: false });
+    if (tx.committed) {
+      promovidos.forEach(id => promoverSolicitacao(id));
+      if (voltou) registrarAtividadePublica("voltou", PRODUTO[produtoId]);
+    }
+  }
+
+  /* Ao concluir: a reserva vira consumo (fatias entregues). Idempotente. */
+  async function consumirReserva(produtoId, solId) {
+    await runTransaction(r(`estoque/${produtoId}`), (cur) => {
+      if (cur === null) return cur;
+      if (!cur.reservas || !cur.reservas[solId]) return;
+      delete cur.reservas[solId];
+      cur.atualizadoEm = agoraServidor();
+      return cur;
+    }, { applyLocally: false });
+  }
+
+  /* ============================================================================
+     7) AÇÕES DA EQUIPE NAS SOLICITAÇÕES (transação no status)
+     ============================================================================ */
+  async function mudarStatus(id, permitidos, novo) {
+    let atual = null;
+    const cicloReserva = S.estoque[S.sol[id]?.produtoId]?.reservas?.[id]?.ciclo ?? null;
+    const tx = await runTransaction(r(`solicitacoes/${id}`), (cur) => {
+      atual = null;
+      if (cur === null) return cur;
+      if (!permitidos.includes(cur.status)) { atual = cur.status; return; }
+      const agora = agoraServidor();
+      cur.status = novo;
+      cur.atualizadoEm = agora;
+      cur.atualizadoPor = "operacao";
+      if (novo === STATUS.EM_ATENDIMENTO) cur.atendimentoIniciadoEm = agora;
+      if (novo === STATUS.SOLICITADO) cur.atendimentoIniciadoEm = null;
+      if (novo === STATUS.ATENDIDO) {
+        cur.atendidoEm = agora;
+        cur.consumo = { quantidade: cur.quantidade, ciclo: cicloReserva ?? cur.cicloEstoque ?? null, em: agora };
+      }
+      if (novo === STATUS.CANCELADO) {
+        cur.canceladoPor = "operacao";
+        cur.canceladoSessaoId = S.sessaoId;
+        cur.canceladoEm = agora;
+      }
+      cur.historico = cur.historico || {};
+      cur.historico[novaChave()] = { status: novo, em: agora, por: "operacao" };
+      return cur;
+    }, { applyLocally: false });
+    const ok = tx.committed && tx.snapshot.val()?.status === novo;
+    return { ok, atual: atual || tx.snapshot.val()?.status || null, dados: tx.snapshot.val() };
+  }
+
+  function avisoConflito(s, atual) {
+    const quem = rotuloMesa(s);
+    if (atual === STATUS.CANCELADO) toast(`${quem} cancelou este pedido antes do atendimento.`);
+    else if (!atual) toast("Este pedido não existe mais.");
+    else toast(`Este pedido da ${quem} já está como ${ROTULO[atual] || atual}.`);
+  }
+
+  async function executar(id, fn) {
+    if (S.ocupados.has(id)) return;
+    if (!S.conectado) { toast("Sem conexão com o banco. Aguarde reconectar."); return; }
+    S.ocupados.add(id); agendarRender();
+    try { await fn(); }
+    catch (e) { console.warn(e); toast("Não foi possível salvar agora. Tente de novo."); }
+    finally { S.ocupados.delete(id); agendarRender(); }
+  }
+
+  function atender(id, silencioso = false) {
+    return executar(id, async () => {
+      const s = S.sol[id];
+      const res = await mudarStatus(id, [STATUS.SOLICITADO], STATUS.EM_ATENDIMENTO);
+      if (!res.ok) { avisoConflito(s, res.atual); return; }
+      if (!silencioso) toast(`${rotuloMesa(s)}: atendimento de ${nomeDe(s)} iniciado.`, "Desfazer", () => desfazerAtender(id));
+    });
+  }
+  function desfazerAtender(id) {
+    return executar(id, async () => {
+      const res = await mudarStatus(id, [STATUS.EM_ATENDIMENTO], STATUS.SOLICITADO);
+      if (!res.ok) toast("Não foi possível desfazer: o status já mudou.");
+    });
+  }
+  function concluir(id, silencioso = false) {
+    return executar(id, async () => {
+      const s = S.sol[id];
+      const res = await mudarStatus(id, [STATUS.EM_ATENDIMENTO], STATUS.ATENDIDO);
+      if (!res.ok) { avisoConflito(s, res.atual); return; }
+      if (res.dados?.controlaEstoque) await consumirReserva(res.dados.produtoId, id);
+      if (!silencioso) toast(`✓ ${rotuloMesa(s)} atendida: ${nomeDe(s)}, ${qtdTexto(s.quantidade, catDe(s))}.`);
+    });
+  }
+  function cancelarAdm(id) {
+    return executar(id, async () => {
+      const s = S.sol[id];
+      const res = await mudarStatus(id, ATIVOS, STATUS.CANCELADO);
+      if (!res.ok) { avisoConflito(s, res.atual); return; }
+      if (res.dados?.controlaEstoque) await liberarEstoque(res.dados.produtoId, id);
+      toast(`Pedido da ${rotuloMesa(s)} cancelado. A mesa já foi avisada.`);
+    });
+  }
+  async function emLote(ids, fn) {
+    for (const id of ids) await fn(id, true);
+  }
+
+  /* ============================================================================
+     8) MANUTENÇÃO AUTOMÁTICA (sem simulação: apenas mantém o estado coerente)
+     ============================================================================ */
+  function agendarReposicoes() {
+    for (const p of PIZZAS) {
+      clearTimeout(S.timers[p.id]);
+      const e = S.estoque[p.id];
+      if (!e || (Number(e.disponivel) || 0) > 0) continue;
+      const falta = e.zeradoEm ? e.zeradoEm + REPOSICAO_MS - agoraServidor() : 0;
+      S.timers[p.id] = setTimeout(() => reporPizza(p.id), Math.max(0, falta) + 250);
+    }
+  }
+
+  /* Coerência: fila/reserva órfã de pedido cancelado, reserva de pedido atendido,
+     e pedidos aguardando que já receberam reserva. */
+  function reconciliar() {
+    if (!S.conectado || !S.estoqueCarregado || !S.solCarregadas) return;
+    for (const s of Object.values(S.sol)) {
+      if (!s?.controlaEstoque) continue;
+      const e = S.estoque[s.produtoId];
+      if (!e) continue;
+      const temReserva = !!e.reservas?.[s.id], naFila = !!e.fila?.[s.id];
+      if (s.status === STATUS.AGUARDANDO_REPOSICAO && temReserva) promoverSolicitacao(s.id);
+      else if (s.status === STATUS.CANCELADO && (temReserva || naFila)) umaVez("lib:" + s.id, () => liberarEstoque(s.produtoId, s.id));
+      else if (s.status === STATUS.ATENDIDO && temReserva) umaVez("cons:" + s.id, () => consumirReserva(s.produtoId, s.id));
+    }
+  }
+  function umaVez(chave, fn) {
+    if (S.emAndamento.has(chave)) return;
+    S.emAndamento.add(chave);
+    Promise.resolve().then(fn).catch(e => console.warn(e)).finally(() => S.emAndamento.delete(chave));
+  }
+
+  /* Registra no log interno quando uma pizza esgota ou é reposta (chave determinística). */
+  function registrarEventosEstoque() {
+    if (!S.conectado || !S.eventosCarregados) return;
+    for (const p of PIZZAS) {
+      const e = S.estoque[p.id];
+      if (!e) continue;
+      if ((Number(e.disponivel) || 0) === 0 && e.zeradoEm) {
+        garantirEvento(`${p.id}_esg_${e.zeradoEm}`, { tipo: "esgotada", produtoId: p.id, produtoNome: p.nome, ciclo: e.ciclo || 1, em: e.zeradoEm });
+      }
+      if ((e.ciclo || 1) > 1 && e.repostoEm) {
+        garantirEvento(`${p.id}_rep_${e.ciclo}`, { tipo: "reposta", produtoId: p.id, produtoNome: p.nome, ciclo: e.ciclo, em: e.repostoEm, manual: e.reposicaoManualEm === e.repostoEm });
+      }
+    }
+  }
+  function garantirEvento(chave, dados) {
+    if (S.eventos[chave] || S.emAndamento.has("ev:" + chave)) return;
+    S.emAndamento.add("ev:" + chave);
+    runTransaction(r(`eventosEstoque/${chave}`), cur => cur === null ? dados : undefined, { applyLocally: false })
+      .catch(e => console.warn(e))
+      .finally(() => S.emAndamento.delete("ev:" + chave));
+  }
+
+  /* Cria catálogo e estoque inicial se o banco estiver vazio (idêntico ao cliente). */
+  let catalogoOk = false;
+  async function garantirCatalogo() {
+    if (catalogoOk || !S.conectado) return;
+    catalogoOk = true;
+    try {
+      const cfg = await get(r("config/versaoCatalogo"));
+      if (cfg.val() !== VERSAO_CATALOGO) {
+        const u = {};
+        u["config/versaoCatalogo"] = VERSAO_CATALOGO;
+        u["config/fatiasPorPizza"] = FATIAS_POR_PIZZA;
+        u["config/reposicaoMs"] = REPOSICAO_MS;
+        u["config/totalMesas"] = TOTAL_MESAS;
+        for (const c of CATEGORIAS) u[`categorias/${c.id}`] = { id: c.id, nome: c.nome, emoji: c.emoji, ordem: c.ordem, controlaEstoque: c.controlaEstoque, unidade: c.unidade.id };
+        for (const p of PRODUTOS) u[`produtos/${p.id}`] = { id: p.id, nome: p.nome, categoria: p.categoria, ordem: p.ordem, controlaEstoque: p.controlaEstoque, emoji: p.emoji };
+        for (let n = 1; n <= TOTAL_MESAS; n++) { u[`mesas/${mesaIdDe(n)}/numero`] = n; u[`mesas/${mesaIdDe(n)}/rotulo`] = `Mesa ${doisDig(n)}`; }
+        await update(ref(db, RAIZ), u);
+      }
+      const est = await get(r("estoque"));
+      const atual = est.val() || {};
+      await Promise.all(PIZZAS.filter(p => !atual[p.id]).map(p =>
+        runTransaction(r(`estoque/${p.id}`), (cur) => cur === null ? {
+          produtoId: p.id, capacidade: FATIAS_POR_PIZZA, disponivel: FATIAS_POR_PIZZA, ciclo: 1, atualizadoEm: agoraServidor()
+        } : undefined, { applyLocally: false })
+      ));
+    } catch (e) { catalogoOk = false; console.warn("[catálogo]", e); }
+  }
+
+  /* ============================================================================
+     9) LISTENERS EM TEMPO REAL
+     ============================================================================ */
+  function ouvir() {
+    onValue(ref(db, ".info/serverTimeOffset"), s => { S.offset = Number(s.val()) || 0; });
+    onValue(ref(db, ".info/connected"), s => {
+      S.conectado = s.val() === true;
+      if (S.conectado) { S.jaConectou = true; garantirCatalogo(); agendarReposicoes(); reconciliar(); registrarEventosEstoque(); }
+      atualizarConexao(); agendarRender();
+    });
+    onValue(r("estoque"), s => {
+      S.estoque = s.val() || {};
+      S.estoqueCarregado = true;
+      agendarReposicoes(); reconciliar(); registrarEventosEstoque(); agendarRender();
+    }, erro);
+    onValue(r("solicitacoes"), s => {
+      const novas = {};
+      s.forEach(c => { const v = c.val(); if (v) novas[c.key] = { ...v, id: c.key }; });
+      detectarNovidades(novas);
+      S.sol = novas;
+      S.solCarregadas = true;
+      reconciliar(); agendarRender();
+    }, erro);
+    onValue(r("mesas"), s => { S.mesas = s.val() || {}; agendarRender(); if (S.mesaAberta) renderMesaAberta(); }, erro);
+    onValue(query(r("eventosEstoque"), orderByChild("em"), limitToLast(120)), s => {
+      const ev = {};
+      s.forEach(c => { ev[c.key] = c.val(); });
+      S.eventos = ev; S.eventosCarregados = true;
+      registrarEventosEstoque(); agendarRender();
+    }, erro);
+  }
+  function erro(e) { console.warn("[firebase]", e); }
+
+  /* Alertas de chegada para o garçom */
+  function detectarNovidades(novas) {
+    if (!S.solCarregadas) {
+      S.statusVisto = Object.fromEntries(Object.entries(novas).map(([k, v]) => [k, v.status]));
+      return;
+    }
+    let tocar = false;
+    for (const [id, s] of Object.entries(novas)) {
+      const antes = S.statusVisto[id];
+      const q = qtdTexto(s.quantidade, catDe(s));
+      if (!antes && s.status === STATUS.SOLICITADO) {
+        S.novos.set(id, Date.now()); tocar = true;
+        toast(`${rotuloMesa(s)} pediu ${nomeDe(s)}: ${q}.`);
+      } else if (!antes && s.status === STATUS.AGUARDANDO_REPOSICAO) {
+        toast(`${rotuloMesa(s)} reservou ${q} da próxima ${nomeDe(s)}.`);
+      } else if (antes === STATUS.AGUARDANDO_REPOSICAO && s.status === STATUS.SOLICITADO) {
+        S.novos.set(id, Date.now()); tocar = true;
+        toast(`🔥 ${nomeDe(s)} saiu: levar ${q} para a ${rotuloMesa(s)}.`);
+      } else if (antes && antes !== STATUS.CANCELADO && s.status === STATUS.CANCELADO && s.canceladoPor === "cliente") {
+        toast(`${rotuloMesa(s)} cancelou ${nomeDe(s)}.`);
+      }
+    }
+    S.statusVisto = Object.fromEntries(Object.entries(novas).map(([k, v]) => [k, v.status]));
+    if (tocar) bip();
+  }
+
+  /* ============================================================================
+     10) RENDERIZAÇÃO
+     ============================================================================ */
+  let renderPendente = false;
+  function agendarRender() {
+    if (renderPendente) return;
+    renderPendente = true;
+    requestAnimationFrame(() => {
+      renderPendente = false;
+      if (S.modo === "garcom") renderGarcom(); else renderGestao();
+      atualizarBadge();
+      if (!$("#telaDemo").hidden) renderDemoConexao();
+    });
+  }
+  function atualizarConexao() {
+    const el = $("#conexao");
+    el.dataset.estado = S.conectado ? "on" : "off";
+    el.lastElementChild.textContent = S.conectado ? "Conectado" : (S.jaConectou ? "Reconectando..." : "Conectando...");
+  }
+  function atualizarBadge() {
+    const n = Object.values(S.sol).filter(s => s.status === STATUS.SOLICITADO).length;
+    const b = $("#badgeGarcom"); b.hidden = n === 0; b.textContent = n;
+    document.title = n ? `(${n}) Operação | Rodízio` : "Operação | Rodízio";
+  }
+
+  function estadoPizza(id) {
+    const e = S.estoque[id];
+    if (!e) return null;
+    const cap = Number(e.capacidade) || FATIAS_POR_PIZZA;
+    const disp = Math.max(0, Math.min(cap, Number(e.disponivel) || 0));
+    const ciclo = e.ciclo || 1;
+    const reservadas = Object.values(e.reservas || {}).filter(x => (x?.ciclo || 1) === ciclo).reduce((t, x) => t + (Number(x?.quantidade) || 0), 0);
+    const fila = e.fila || {};
+    const recente = disp > 0 && ciclo > 1 && e.repostoEm && agoraServidor() - e.repostoEm < DESTAQUE_REPOSTA_MS;
+    return {
+      cap, disp, ciclo, reservadas: Math.min(reservadas, cap - disp),
+      esgotada: disp === 0, poucas: disp > 0 && disp <= POUCAS_FATIAS, recente,
+      repostoEm: e.repostoEm || null, zeradoEm: e.zeradoEm || null,
+      filaQtd: somaFila(fila), filaMesas: new Set(Object.values(fila).map(f => f?.mesaId)).size
+    };
+  }
+  function tagEstoque(id) {
+    const st = estadoPizza(id);
+    if (!st) return "";
+    if (st.esgotada) return `<span class="tag esg">ESGOTADA</span>`;
+    if (st.recente) return `<span class="tag fogo">🔥 REPOSTA AGORA</span>`;
+    if (st.poucas) return `<span class="tag pouca">${st.disp === 1 ? "1 FATIA LIVRE" : st.disp + " FATIAS LIVRES"}</span>`;
+    return `<span class="tag livre num">${st.disp} LIVRES</span>`;
+  }
+
+  /* ---------------- MODO GARÇOM ---------------- */
+  function passaFiltro(s) { return S.filtro === "todas" || catDe(s) === S.filtro; }
+
+  function montarFiltros() {
+    const ops = [["todas", "Tudo"], ...CATEGORIAS.map(c => [c.id, `${c.emoji} ${c.nome}`])];
+    $("#filtros").innerHTML = ops.map(([id, nome]) => `<button class="filtro" type="button" data-filtro="${id}" aria-pressed="${S.filtro === id}">${esc(nome)}</button>`).join("");
+  }
+
+  function htmlTicket(s, extraPrio = false) {
+    const p = PRODUTO[s.produtoId];
+    const c = catDe(s);
+    const ocupado = S.ocupados.has(s.id);
+    const esp = espera(s.status === STATUS.EM_ATENDIMENTO ? (s.atendimentoIniciadoEm || s.criadoEm) : (s.liberadoEm || s.criadoEm));
+    const novo = S.novos.has(s.id) && Date.now() - S.novos.get(s.id) < 8000;
+    let acao = "";
+    if (s.status === STATUS.SOLICITADO) acao = `<button class="acao" type="button" data-acao="atender" data-id="${s.id}" ${ocupado ? "disabled" : ""}>${ocupado ? "SALVANDO…" : "ATENDER"}</button>`;
+    else if (s.status === STATUS.EM_ATENDIMENTO) acao = `<button class="acao concluir" type="button" data-acao="concluir" data-id="${s.id}" ${ocupado ? "disabled" : ""}>${ocupado ? "SALVANDO…" : "CONCLUIR ATENDIMENTO"}</button>`;
+    const conf = S.confirmandoCancel === s.id;
+    const cancelar = ATIVOS.includes(s.status)
+      ? `<button class="cancelar-adm${conf ? " confirmar" : ""}" type="button" data-acao="cancelar" data-id="${s.id}" ${ocupado ? "disabled" : ""}>${conf ? "Confirmar cancelamento" : "Cancelar"}</button>` : "";
+    const prio = (extraPrio || s.prioridade) && s.status === STATUS.SOLICITADO;
+    return `<article class="ticket st-${s.status}${prio ? " prioridade" : ""}${novo ? " novo" : ""}">
+      <div class="ticket-mesa"><small>MESA</small><b class="num">${doisDig(numeroMesa(s))}</b></div>
+      <div class="ticket-corpo">
+        <div class="ticket-topo"><span>${esc(emojiDe(s))} ${esc(CAT[c]?.item || "")}</span><span class="espera ${esp.nivel}">${esp.txt}</span></div>
+        ${prio ? `<div class="ticket-prio">🔥 PRIORIDADE: acabou de sair, levar primeiro</div>` : ""}
+        <h3>${esc(nomeDe(s))}</h3>
+        <div class="ticket-qtd num">${esc(qtdTexto(s.quantidade, c).toUpperCase())}</div>
+        <div><span class="chip st-${s.status}">${ROTULO[s.status] || s.status}</span></div>
+        <div class="ticket-acoes">${acao}${cancelar}</div>
+      </div>
+    </article>`;
+  }
+
+  function renderGarcom() {
+    const ativos = Object.values(S.sol).filter(s => ATIVOS.includes(s.status) && passaFiltro(s));
+    const prioSol = ativos.filter(s => s.status === STATUS.SOLICITADO && s.prioridade).sort((a, b) => (a.liberadoEm || a.criadoEm || 0) - (b.liberadoEm || b.criadoEm || 0));
+    const aguardando = ativos.filter(s => s.status === STATUS.AGUARDANDO_REPOSICAO).sort((a, b) => (a.criadoEm || 0) - (b.criadoEm || 0));
+    const aAtender = ativos.filter(s => s.status === STATUS.SOLICITADO && !s.prioridade).sort((a, b) => (a.criadoEm || 0) - (b.criadoEm || 0));
+    const emAt = ativos.filter(s => s.status === STATUS.EM_ATENDIMENTO).sort((a, b) => (a.atendimentoIniciadoEm || 0) - (b.atendimentoIniciadoEm || 0));
+
+    $("#resSol").textContent = prioSol.length + aAtender.length;
+    $("#resEm").textContent = emAt.length;
+    $("#resAgu").textContent = aguardando.length;
+
+    let html = "";
+    if (!S.solCarregadas) html = `<div class="vazio"><strong>Carregando solicitações…</strong></div>`;
+    else if (S.visao === "pedido") html = htmlPorPedido(prioSol, aguardando, aAtender, emAt);
+    else html = htmlPorProduto(ativos);
+
+    const el = $("#garcomConteudo");
+    if (el._html !== html) { el.innerHTML = html; el._html = html; }
+  }
+
+  function htmlAguardando(aguardando) {
+    if (!aguardando.length) return "";
+    const grupos = {};
+    aguardando.forEach(s => { (grupos[s.produtoId] ||= []).push(s); });
+    return `<div class="aguarda">${Object.entries(grupos).map(([pid, lista]) => `
+      <div class="ag-grupo">
+        <div class="ag-cab"><span>${esc(emojiDe(lista[0]))} ${esc(nomeDe(lista[0]))}</span>${tagEstoque(pid)}</div>
+        ${lista.map(s => {
+          const conf = S.confirmandoCancel === s.id;
+          return `<div class="ag-linha"><b class="num">${rotuloMesa(s)}</b><span class="seta">→</span><strong>${esc(qtdTexto(s.quantidade, catDe(s)))}</strong>
+          <span class="dir"><span class="chip st-AGUARDANDO_REPOSICAO">AGUARDANDO REPOSIÇÃO</span>
+          <button class="cancelar-adm${conf ? " confirmar" : ""}" type="button" data-acao="cancelar" data-id="${s.id}">${conf ? "Confirmar" : "Cancelar"}</button></span></div>`;
+        }).join("")}
+      </div>`).join("")}</div>`;
+  }
+
+  function htmlPorPedido(prioSol, aguardando, aAtender, emAt) {
+    let h = "";
+    if (prioSol.length || aguardando.length) {
+      h += `<section class="bloco prio"><div class="bloco-cab"><h2>🔥 Prioridade</h2><span class="cont num">${prioSol.length + aguardando.length}</span></div>
+        ${prioSol.length ? `<div class="tickets">${prioSol.map(s => htmlTicket(s, true)).join("")}</div>` : ""}
+        ${htmlAguardando(aguardando)}
+      </section>`;
+    }
+    h += `<section class="bloco"><div class="bloco-cab"><h2>A atender</h2><span class="cont num">${aAtender.length}</span></div>
+      ${aAtender.length ? `<div class="tickets">${aAtender.map(s => htmlTicket(s)).join("")}</div>`
+        : `<div class="vazio"><strong>Nenhuma mesa aguardando atendimento.</strong>As novas solicitações aparecem aqui automaticamente.</div>`}
+    </section>`;
+    if (emAt.length) {
+      h += `<section class="bloco"><div class="bloco-cab"><h2>Em atendimento</h2><span class="cont num">${emAt.length}</span></div>
+        <div class="tickets">${emAt.map(s => htmlTicket(s)).join("")}</div></section>`;
+    }
+    const recentes = Object.values(S.sol).filter(s => s.status === STATUS.ATENDIDO && passaFiltro(s))
+      .sort((a, b) => (b.atendidoEm || b.atualizadoEm || 0) - (a.atendidoEm || a.atualizadoEm || 0)).slice(0, 8);
+    if (recentes.length) {
+      h += `<section class="bloco"><div class="bloco-cab"><h2>Atendidos recentemente</h2></div>
+        <ul class="recentes">${recentes.map(s => `<li><span class="hora num">${hora(s.atendidoEm || s.atualizadoEm)}</span><b>${rotuloMesa(s)}</b><span>${esc(emojiDe(s))} ${esc(nomeDe(s))}, ${esc(qtdTexto(s.quantidade, catDe(s)))}</span></li>`).join("")}</ul>
+      </section>`;
+    }
+    return h;
+  }
+
+  function htmlPorProduto(ativos) {
+    if (!ativos.length) return `<div class="vazio"><strong>Nenhuma solicitação em aberto.</strong>Quando as mesas pedirem, os produtos aparecem agrupados aqui.</div>`;
+    const grupos = {};
+    ativos.forEach(s => { (grupos[s.produtoId] ||= []).push(s); });
+    const ordem = Object.entries(grupos).map(([pid, lista]) => {
+      const prio = lista.some(s => s.status === STATUS.SOLICITADO && s.prioridade);
+      const maisAntigo = Math.min(...lista.map(s => s.criadoEm || Infinity));
+      return { pid, lista, prio, maisAntigo };
+    }).sort((a, b) => (b.prio - a.prio) || (a.maisAntigo - b.maisAntigo));
+
+    const pesoStatus = { SOLICITADO: 0, EM_ATENDIMENTO: 1, AGUARDANDO_REPOSICAO: 2 };
+    return `<div class="grupos">${ordem.map(({ pid, lista, prio }) => {
+      lista.sort((a, b) => (pesoStatus[a.status] - pesoStatus[b.status]) || ((b.prioridade ? 1 : 0) - (a.prioridade ? 1 : 0)) || ((a.criadoEm || 0) - (b.criadoEm || 0)));
+      const c = catDe(lista[0]);
+      const total = lista.reduce((t, s) => t + (Number(s.quantidade) || 0), 0);
+      const mesas = new Set(lista.map(s => s.mesaId)).size;
+      const paraAtender = lista.filter(s => s.status === STATUS.SOLICITADO).map(s => s.id);
+      const paraConcluir = lista.filter(s => s.status === STATUS.EM_ATENDIMENTO).map(s => s.id);
+      return `<article class="grupo${prio ? " tem-prio" : ""}">
+        <div class="grupo-cab">
+          <div><h3>${esc(emojiDe(lista[0]))} ${esc(nomeDe(lista[0]))}</h3>
+            <div class="grupo-total num">${esc(qtdTexto(total, c).toUpperCase())} <span>— ${mesas} ${mesas === 1 ? "MESA" : "MESAS"}</span></div></div>
+          ${PRODUTO[pid]?.controlaEstoque ? tagEstoque(pid) : ""}
+        </div>
+        <ul>${lista.map(s => {
+          const oc = S.ocupados.has(s.id);
+          let btn = "";
+          if (s.status === STATUS.SOLICITADO) btn = `<button class="mini" type="button" data-acao="atender" data-id="${s.id}" ${oc ? "disabled" : ""}>ATENDER</button>`;
+          else if (s.status === STATUS.EM_ATENDIMENTO) btn = `<button class="mini concluir" type="button" data-acao="concluir" data-id="${s.id}" ${oc ? "disabled" : ""}>CONCLUIR</button>`;
+          const esp = espera(s.liberadoEm || s.criadoEm);
+          return `<li class="linha-g"><span class="mesa-g num">${rotuloMesa(s)}</span><span>→</span><span class="qtd-g">${esc(qtdTexto(s.quantidade, c))}</span>
+            ${s.prioridade && s.status === STATUS.SOLICITADO ? `<span class="tag fogo">🔥 PRIORIDADE</span>` : ""}
+            <span class="dir"><span class="espera ${esp.nivel}" style="font-size:12px">${esp.txt}</span><span class="chip st-${s.status}">${ROTULO[s.status]}</span>${btn}</span></li>`;
+        }).join("")}</ul>
+        ${paraAtender.length || paraConcluir.length ? `<div class="grupo-rodape">
+          ${paraAtender.length > 1 ? `<button class="acao" type="button" data-acao="atender-todas" data-ids="${paraAtender.join(",")}">ATENDER TODAS (${paraAtender.length})</button>` : ""}
+          ${paraConcluir.length > 1 ? `<button class="acao concluir" type="button" data-acao="concluir-todas" data-ids="${paraConcluir.join(",")}">CONCLUIR TODAS (${paraConcluir.length})</button>` : ""}
+        </div>` : ""}
+      </article>`;
+    }).join("")}</div>`;
+  }
+
+  /* ---------------- MODO COZINHA / GESTÃO ---------------- */
+  function renderGestao() {
+    const todas = Object.values(S.sol);
+    const validas = todas.filter(s => s.status !== STATUS.CANCELADO);
+    const cont = (st) => todas.filter(s => s.status === st).length;
+    const pend = cont(STATUS.SOLICITADO) + cont(STATUS.AGUARDANDO_REPOSICAO);
+    const atendidas = todas.filter(s => s.status === STATUS.ATENDIDO);
+    const fatiasServidas = atendidas.filter(s => s.controlaEstoque).reduce((t, s) => t + (Number(s.consumo?.quantidade ?? s.quantidade) || 0), 0);
+    const estados = PIZZAS.map(p => ({ p, st: estadoPizza(p.id) })).filter(x => x.st);
+    const esgotadas = estados.filter(x => x.st.esgotada);
+
+    $("#kpis").innerHTML = [
+      ["Solicitações", todas.length, cont(STATUS.CANCELADO) === 1 ? "1 cancelada" : `${cont(STATUS.CANCELADO)} canceladas`, false],
+      ["Pendentes", pend, `${cont(STATUS.AGUARDANDO_REPOSICAO)} aguardando reposição`, false],
+      ["Em atendimento", cont(STATUS.EM_ATENDIMENTO), "com o garçom agora", false],
+      ["Atendidas", atendidas.length, fatiasServidas === 1 ? "1 fatia servida" : `${fatiasServidas} fatias servidas`, false],
+      ["Pizzas esgotadas", esgotadas.length, `de ${PIZZAS.length} sabores`, esgotadas.length > 0]
+    ].map(([t, v, sub, al]) => `<div class="kpi${al ? " alerta" : ""}"><h3>${t}</h3><b class="num">${v}</b><small>${esc(sub)}</small></div>`).join("");
+
+    // Tiles das pizzas
+    const tile = ({ p, st }) => {
+      let cls = "tile", tag = "";
+      if (st.esgotada) { cls += " esgotada"; tag = `<span class="tag esg" style="background:#fff;color:#2B2F2C">ESGOTADA</span>`; }
+      else if (st.recente) { cls += " reposta"; tag = `<span class="tag fogo">🔥 REPOSTA AGORA</span>`; }
+      else if (st.poucas) { cls += " poucas"; tag = `<span class="tag pouca">POUCAS FATIAS</span>`; }
+      const seg = Array.from({ length: st.cap }, (_, i) => `<i class="${i < st.disp ? "l" : i < st.disp + st.reservadas ? "r" : ""}"></i>`).join("");
+      const extra = st.esgotada && st.filaMesas ? `<span style="font-size:12px;font-weight:700">${st.filaMesas} ${st.filaMesas === 1 ? "mesa aguardando" : "mesas aguardando"}</span>` : "";
+      return `<div class="${cls}"><div class="tile-nome">${esc(p.nome)}</div>
+        <div class="tile-num"><b class="num">${st.disp}</b><span>de ${st.cap} livres${st.reservadas ? `, ${st.reservadas} reservadas` : ""}</span></div>
+        <div class="fatias" aria-hidden="true">${seg}</div>${tag}${extra}</div>`;
+    };
+    $("#tilesSalgadas").innerHTML = estados.filter(x => x.p.categoria === "salgadas").map(tile).join("") || `<p class="lista-vazia">Carregando…</p>`;
+    $("#tilesDoces").innerHTML = estados.filter(x => x.p.categoria === "doces").map(tile).join("") || `<p class="lista-vazia">Carregando…</p>`;
+    const livresTot = estados.reduce((t, x) => t + x.st.disp, 0);
+    $("#pizzasResumo").textContent = estados.length ? `${livresTot} fatias livres no total` : "";
+
+    // Listas laterais
+    $("#listaEsgotadas").innerHTML = esgotadas.length
+      ? esgotadas.map(({ p, st }) => `<li>${p.emoji} ${esc(p.nome)}<span class="dir">${st.filaMesas ? `${st.filaQtd} fatias <small>(${st.filaMesas} ${st.filaMesas === 1 ? "mesa" : "mesas"} aguardando)</small>` : `<small>sem fila</small>`}</span></li>`).join("")
+      : `<li class="lista-vazia">Nenhuma pizza esgotada.</li>`;
+    const poucas = estados.filter(x => x.st.poucas).sort((a, b) => a.st.disp - b.st.disp);
+    $("#listaPoucas").innerHTML = poucas.length
+      ? poucas.map(({ p, st }) => `<li>${p.emoji} ${esc(p.nome)}<span class="dir num">${st.disp} ${st.disp === 1 ? "fatia" : "fatias"}</span></li>`).join("")
+      : `<li class="lista-vazia">Nenhuma pizza com poucas fatias.</li>`;
+    const agora = agoraServidor();
+    const repostas = estados.filter(x => x.st.ciclo > 1 && x.st.repostoEm && agora - x.st.repostoEm < RECENTE_GESTAO_MS).sort((a, b) => b.st.repostoEm - a.st.repostoEm);
+    $("#listaRepostas").innerHTML = repostas.length
+      ? repostas.map(({ p, st }) => `<li>${p.emoji} ${esc(p.nome)}<span class="dir num"><small>${hora(st.repostoEm)}</small></span></li>`).join("")
+      : `<li class="lista-vazia">Nenhuma reposição nos últimos minutos.</li>`;
+
+    // Mais solicitados (somente solicitações reais, exceto canceladas)
+    const porProd = {};
+    validas.forEach(s => { const x = (porProd[s.produtoId] ||= { s, pedidos: 0, qtd: 0 }); x.pedidos++; x.qtd += Number(s.quantidade) || 0; });
+    const top = Object.values(porProd).sort((a, b) => b.pedidos - a.pedidos || b.qtd - a.qtd).slice(0, 8);
+    const maxP = Math.max(1, ...top.map(t => t.pedidos));
+    $("#maisSolicitados").innerHTML = top.length
+      ? top.map(t => `<div class="barra-h"><span class="rot">${esc(emojiDe(t.s))} ${esc(nomeDe(t.s))}</span><span class="val num">${t.pedidos} ${t.pedidos === 1 ? "pedido" : "pedidos"} <small>(${esc(qtdTexto(t.qtd, catDe(t.s)))})</small></span><span class="trilho"><i style="width:${(t.pedidos / maxP) * 100}%"></i></span></div>`).join("")
+      : `<p class="lista-vazia">Ainda não há solicitações. Os dados aparecem conforme as mesas pedem.</p>`;
+
+    // Demanda por categoria
+    const porCat = Object.fromEntries(CATEGORIAS.map(c => [c.id, { pedidos: 0, qtd: 0 }]));
+    validas.forEach(s => { const x = porCat[catDe(s)]; if (x) { x.pedidos++; x.qtd += Number(s.quantidade) || 0; } });
+    const maxC = Math.max(1, ...Object.values(porCat).map(x => x.pedidos));
+    $("#porCategoria").innerHTML = CATEGORIAS.map(c => {
+      const x = porCat[c.id];
+      return `<div class="barra-h cat"><span class="rot">${c.emoji} ${c.nome}</span><span class="val num">${x.pedidos} ${x.pedidos === 1 ? "pedido" : "pedidos"} <small>(${esc(qtdTexto(x.qtd, c.id))})</small></span><span class="trilho"><i style="width:${(x.pedidos / maxC) * 100}%"></i></span></div>`;
+    }).join("");
+
+    renderMesas();
+    renderFeed();
+  }
+
+  function renderMesas() {
+    const ativosPorMesa = {};
+    Object.values(S.sol).forEach(s => { if (ATIVOS.includes(s.status)) ativosPorMesa[s.mesaId] = (ativosPorMesa[s.mesaId] || 0) + 1; });
+    $("#mesasGrid").innerHTML = Array.from({ length: TOTAL_MESAS }, (_, i) => {
+      const id = mesaIdDe(i + 1);
+      const disp = Object.keys(S.mesas[id]?.dispositivos || {}).length;
+      const at = ativosPorMesa[id] || 0;
+      return `<button class="mesa-c${disp ? " online" : ""}${at ? " ativa" : ""}" type="button" data-mesa="${id}">
+        <b class="num">${doisDig(i + 1)}</b>
+        <span><i class="on"></i>${disp ? "conectada" : "sem aparelho"}</span>
+        <span>${at ? `${at} em aberto` : "sem pedidos"}</span></button>`;
+    }).join("");
+  }
+
+  /* Atividade da equipe: histórico das solicitações + eventos de estoque */
+  function eventosAtividade() {
+    const ev = [];
+    for (const s of Object.values(S.sol)) {
+      const hist = Object.values(s.historico || {}).filter(h => h && h.em);
+      if (!hist.length) ev.push({ em: s.criadoEm || 0, status: s.status, por: "cliente", s });
+      hist.forEach(h => ev.push({ em: h.em, status: h.status, por: h.por, s }));
+    }
+    for (const e of Object.values(S.eventos)) if (e?.em) ev.push({ em: e.em, estoque: e });
+    return ev.sort((a, b) => b.em - a.em || (a.estoque ? 1 : 0) - (b.estoque ? 1 : 0)).slice(0, 80);
+  }
+  function textoEvento(ev) {
+    if (ev.estoque) {
+      const e = ev.estoque;
+      const nome = e.produtoNome || PRODUTO[e.produtoId]?.nome || "";
+      if (e.tipo === "esgotada") return ["⛔", `${nome} ficou esgotada.`];
+      return ["🔥", `${nome} foi reposta${e.manual ? " (reposição manual)" : ""}.`];
+    }
+    const s = ev.s, m = rotuloMesa(s), n = nomeDe(s), q = qtdTexto(s.quantidade, catDe(s));
+    switch (ev.status) {
+      case STATUS.SOLICITADO:
+        if (ev.por === "sistema") return ["🔥", `Prioridade: ${q} de ${n} destinadas à ${m}.`];
+        if (ev.por === "operacao") return ["↩️", `Atendimento da ${m} (${n}) voltou para a fila.`];
+        return ["🛎️", `${m} solicitou ${n} — ${q}.`];
+      case STATUS.AGUARDANDO_REPOSICAO: return ["⏳", `${m} reservou ${n} da próxima pizza — ${q}.`];
+      case STATUS.EM_ATENDIMENTO: return ["🏃", `Atendimento iniciado: ${m}, ${n}.`];
+      case STATUS.ATENDIDO: return ["✅", `${m} foi atendida — ${n}, ${q}.`];
+      case STATUS.CANCELADO: return ["✖️", ev.por === "cliente" ? `${m} cancelou ${n}.` : `Equipe cancelou o pedido da ${m} — ${n}.`];
+      default: return ["•", `${m}: ${n}.`];
+    }
+  }
+  function renderFeed() {
+    const ev = eventosAtividade();
+    const html = ev.length
+      ? ev.map(e => { const [ic, t] = textoEvento(e); return `<li><span class="hora num">${hora(e.em)}</span><span aria-hidden="true">${ic}</span><span>${esc(t)}</span></li>`; }).join("")
+      : `<li class="lista-vazia" style="display:block">Nenhuma atividade ainda. Tudo o que acontecer no rodízio aparece aqui.</li>`;
+    const el = $("#feed");
+    if (el._html !== html) { el.innerHTML = html; el._html = html; }
+  }
+
+  /* ---------------- Mesa (detalhe) ---------------- */
+  function abrirMesa(mesaId) { S.mesaAberta = mesaId; renderMesaAberta(); abrir("telaMesa"); }
+  function renderMesaAberta() {
+    const id = S.mesaAberta; if (!id) return;
+    const n = Number(id.replace(/\D/g, ""));
+    const m = S.mesas[id] || {};
+    const disp = Object.keys(m.dispositivos || {}).length;
+    const inicio = Number(m.inicioAtendimento) || 0;
+    const pedidos = Object.values(S.sol).filter(s => s.mesaId === id && (ATIVOS.includes(s.status) || (s.criadoEm || 0) >= inicio))
+      .sort((a, b) => (b.criadoEm || 0) - (a.criadoEm || 0));
+    $("#mesaTitulo").textContent = `Mesa ${doisDig(n)}`;
+    $("#mesaInfo").textContent = `${disp ? `${disp} ${disp === 1 ? "aparelho conectado" : "aparelhos conectados"}` : "Nenhum aparelho conectado"}${inicio ? `. Atendimento atual desde ${hora(inicio)}.` : "."}`;
+    $("#mesaPedidos").innerHTML = pedidos.length
+      ? pedidos.map(s => `<li><span>${esc(emojiDe(s))} ${esc(nomeDe(s))}, ${esc(qtdTexto(s.quantidade, catDe(s)))}</span><span class="dir"><span class="chip st-${s.status}">${ROTULO[s.status]}</span></span></li>`).join("")
+      : `<li class="lista-vazia">Nenhum pedido no atendimento atual.</li>`;
+  }
+  async function liberarMesa(mesaId) {
+    const ativos = Object.values(S.sol).filter(s => s.mesaId === mesaId && ATIVOS.includes(s.status)).length;
+    const n = doisDig(Number(mesaId.replace(/\D/g, "")));
+    const ok = await confirmar({
+      titulo: `Liberar Mesa ${n}?`,
+      texto: (ativos ? `Atenção: a mesa ainda tem ${ativos} ${ativos === 1 ? "pedido" : "pedidos"} em aberto, que continuarão no painel. ` : "") +
+        "Os aparelhos da mesa passam a mostrar uma lista de pedidos vazia e as preferências \"Não recomendar\" da mesa serão apagadas.",
+      botao: "Liberar mesa"
+    });
+    if (!ok) return;
+    try {
+      await update(ref(db, RAIZ), { [`mesas/${mesaId}/inicioAtendimento`]: serverTimestamp(), [`preferencias/${mesaId}`]: null });
+      toast(`Mesa ${n} liberada para novos clientes.`);
+      fechar("telaMesa");
+    } catch (e) { console.warn(e); toast("Não foi possível liberar a mesa agora."); }
+  }
+
+  /* ============================================================================
+     11) ÁREA DE DEMONSTRAÇÃO
+     ============================================================================ */
+  function montarDemo() {
+    const og = (cat) => `<optgroup label="${CAT[cat].nome}">${PIZZAS.filter(p => p.categoria === cat).map(p => `<option value="${p.id}">${esc(p.nome)}</option>`).join("")}</optgroup>`;
+    $("#demoPizza").innerHTML = og("salgadas") + og("doces");
+  }
+  function renderDemoConexao() {
+    let aparelhos = 0; const mesasOn = [];
+    for (const [id, m] of Object.entries(S.mesas)) {
+      const n = Object.keys(m?.dispositivos || {}).length;
+      if (n) { aparelhos += n; mesasOn.push(id.replace("mesa_", "")); }
+    }
+    $("#demoConexao").innerHTML = `${S.conectado ? "🟢 Conectado ao banco em tempo real." : "🟠 Sem conexão no momento, tentando reconectar."}<br>
+      Aparelhos de clientes conectados: <b>${aparelhos}</b>${mesasOn.length ? ` (mesas ${mesasOn.sort().join(", ")})` : ""}.<br>
+      Solicitações no banco: <b>${Object.keys(S.sol).length}</b>.`;
+  }
+  function estoqueZerado(ciclo) {
+    return { capacidade: FATIAS_POR_PIZZA, disponivel: FATIAS_POR_PIZZA, ciclo, atualizadoEm: agoraServidor() };
+  }
+  async function limparPedidos() {
+    const ok = await confirmar({
+      titulo: "Limpar pedidos de teste?",
+      texto: "Todas as solicitações serão apagadas em todos os aparelhos, as pizzas voltam a 8 fatias e as estatísticas são zeradas. Essa ação não pode ser desfeita.",
+      botao: "Limpar pedidos"
+    });
+    if (!ok) return;
+    const u = { solicitacoes: null, estatisticas: null };
+    for (const p of PIZZAS) u[`estoque/${p.id}`] = { produtoId: p.id, ...estoqueZerado((S.estoque[p.id]?.ciclo || 1) + 1) };
+    for (let n = 1; n <= TOTAL_MESAS; n++) u[`mesas/${mesaIdDe(n)}/inicioAtendimento`] = serverTimestamp();
+    try { await update(ref(db, RAIZ), u); toast("Pedidos de teste apagados."); }
+    catch (e) { console.warn(e); toast("Não foi possível limpar agora."); }
+  }
+  async function reiniciarDemo() {
+    const ok = await confirmar({
+      titulo: "Reiniciar a demonstração?",
+      texto: "Apaga solicitações, estatísticas, atividade, registros de estoque e preferências \"Não recomendar\". Todas as pizzas voltam a 8 fatias e todas as mesas são liberadas. Essa ação não pode ser desfeita.",
+      botao: "Reiniciar tudo"
+    });
+    if (!ok) return;
+    const u = { solicitacoes: null, estatisticas: null, atividade: null, eventosEstoque: null, preferencias: null, "config/reiniciadoEm": serverTimestamp() };
+    for (const p of PIZZAS) u[`estoque/${p.id}`] = { produtoId: p.id, ...estoqueZerado(1) };
+    for (let n = 1; n <= TOTAL_MESAS; n++) u[`mesas/${mesaIdDe(n)}/inicioAtendimento`] = serverTimestamp();
+    try { await update(ref(db, RAIZ), u); toast("Demonstração reiniciada."); fechar("telaDemo"); }
+    catch (e) { console.warn(e); toast("Não foi possível reiniciar agora."); }
+  }
+
+  /* ============================================================================
+     12) CAMADAS, CONFIRMAÇÃO, TOASTS, SOM
+     ============================================================================ */
+  const pilha = [];
+  function abrir(id) { document.getElementById(id).hidden = false; if (!pilha.includes(id)) pilha.push(id); }
+  function fechar(id) {
+    document.getElementById(id).hidden = true;
+    const i = pilha.indexOf(id); if (i >= 0) pilha.splice(i, 1);
+    if (id === "telaMesa") S.mesaAberta = null;
+  }
+  let resolverConfirma = null;
+  function confirmar({ titulo, texto, botao = "Confirmar" }) {
+    $("#confTitulo").textContent = titulo;
+    $("#confTexto").textContent = texto;
+    $("#confSim").textContent = botao;
+    abrir("telaConfirma");
+    setTimeout(() => $("#confNao").focus(), 30);
+    return new Promise(res => { resolverConfirma = res; });
+  }
+  function responderConfirma(v) { fechar("telaConfirma"); resolverConfirma?.(v); resolverConfirma = null; }
+
+  function toast(msg, acao, fn) {
+    const box = $("#toasts");
+    const t = document.createElement("div");
+    t.className = "toast";
+    t.innerHTML = `<span>${esc(msg)}</span>${acao ? `<button type="button">${esc(acao)}</button>` : ""}`;
+    if (acao) t.querySelector("button").onclick = () => { fn?.(); t.remove(); };
+    box.appendChild(t);
+    while (box.children.length > 4) box.firstChild.remove();
+    setTimeout(() => t.remove(), acao ? 7000 : 5000);
+  }
+
+  let audioCtx = null;
+  function bip() {
+    if (!S.som) return;
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      const t = audioCtx.currentTime;
+      [0, 0.2].forEach(d => {
+        const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+        o.frequency.value = 880; o.connect(g); g.connect(audioCtx.destination);
+        g.gain.setValueAtTime(0.0001, t + d);
+        g.gain.exponentialRampToValueAtTime(0.25, t + d + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + d + 0.15);
+        o.start(t + d); o.stop(t + d + 0.17);
+      });
+    } catch {}
+  }
+  function atualizarBotaoSom() {
+    const b = $("#btnSom");
+    b.setAttribute("aria-pressed", String(S.som));
+    b.textContent = S.som ? "🔔 Som" : "🔕 Som";
+  }
+
+  /* ============================================================================
+     13) EVENTOS DA INTERFACE
+     ============================================================================ */
+  function trocarModo(m) {
+    S.modo = m; ls.set("rodizio.op.modo", m);
+    document.querySelectorAll(".modo").forEach(b => b.setAttribute("aria-selected", String(b.dataset.modo === m)));
+    $("#modoGarcom").hidden = m !== "garcom";
+    $("#modoGestao").hidden = m !== "gestao";
+    $("#garcomConteudo")._html = null; $("#feed")._html = null;
+    agendarRender();
+  }
+  function ligarEventos() {
+    document.querySelectorAll(".modo").forEach(b => b.addEventListener("click", () => trocarModo(b.dataset.modo)));
+    document.querySelectorAll("[data-visao]").forEach(b => b.addEventListener("click", () => {
+      S.visao = b.dataset.visao; ls.set("rodizio.op.visao", S.visao);
+      document.querySelectorAll("[data-visao]").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+      agendarRender();
+    }));
+    $("#filtros").addEventListener("click", e => {
+      const b = e.target.closest("[data-filtro]"); if (!b) return;
+      S.filtro = b.dataset.filtro; ls.set("rodizio.op.filtro", S.filtro);
+      montarFiltros(); agendarRender();
+    });
+
+    $("#garcomConteudo").addEventListener("click", e => {
+      const b = e.target.closest("[data-acao]"); if (!b || b.disabled) return;
+      const id = b.dataset.id;
+      switch (b.dataset.acao) {
+        case "atender": atender(id); break;
+        case "concluir": concluir(id); break;
+        case "cancelar":
+          if (S.confirmandoCancel !== id) {
+            S.confirmandoCancel = id; agendarRender();
+            setTimeout(() => { if (S.confirmandoCancel === id) { S.confirmandoCancel = null; agendarRender(); } }, 4000);
+          } else { S.confirmandoCancel = null; cancelarAdm(id); }
+          break;
+        case "atender-todas": {
+          const ids = b.dataset.ids.split(",").filter(Boolean);
+          emLote(ids, atender).then(() => toast(`Atendimento iniciado para ${ids.length} mesas.`));
+          break;
+        }
+        case "concluir-todas": {
+          const ids = b.dataset.ids.split(",").filter(Boolean);
+          emLote(ids, concluir).then(() => toast(`✓ ${ids.length} atendimentos concluídos.`));
+          break;
+        }
+      }
+    });
+
+    $("#mesasGrid").addEventListener("click", e => { const b = e.target.closest("[data-mesa]"); if (b) abrirMesa(b.dataset.mesa); });
+    $("#mesaLiberar").onclick = () => S.mesaAberta && liberarMesa(S.mesaAberta);
+
+    $("#btnSom").onclick = () => {
+      S.som = !S.som; ls.set("rodizio.op.som", S.som ? "1" : "0"); atualizarBotaoSom();
+      if (S.som) { try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); audioCtx.resume(); } catch {} bip(); }
+    };
+    $("#btnDemo").onclick = () => { renderDemoConexao(); abrir("telaDemo"); };
+    $("#demoRepor").onclick = async () => {
+      const id = $("#demoPizza").value; const p = PRODUTO[id];
+      if (!p || !S.conectado) { toast("Sem conexão com o banco."); return; }
+      try {
+        const n = await reporManual(id);
+        toast(`🔥 ${p.nome} reposta.${n ? ` ${n} ${n === 1 ? "mesa em espera foi atendida" : "mesas em espera foram atendidas"} primeiro.` : ""}`);
+      } catch (e) { console.warn(e); toast("Não foi possível repor agora."); }
+    };
+    $("#demoLimpar").onclick = limparPedidos;
+    $("#demoReiniciar").onclick = reiniciarDemo;
+
+    $("#confSim").onclick = () => responderConfirma(true);
+    $("#confNao").onclick = () => responderConfirma(false);
+    document.querySelectorAll("[data-fechar]").forEach(b => b.addEventListener("click", () => fechar(b.dataset.fechar)));
+    ["telaDemo", "telaMesa"].forEach(id => document.getElementById(id).addEventListener("click", e => { if (e.target.id === id) fechar(id); }));
+    $("#telaConfirma").addEventListener("click", e => { if (e.target.id === "telaConfirma") responderConfirma(false); });
+    document.addEventListener("keydown", e => {
+      if (e.key !== "Escape" || !pilha.length) return;
+      const topo = pilha[pilha.length - 1];
+      if (topo === "telaConfirma") responderConfirma(false); else if (topo !== "telaConfig") fechar(topo);
+    });
+  }
+
+  function relogio() { $("#relogio").textContent = new Date(agoraServidor()).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }); }
+
+  /* Tarefas periódicas: tempos de espera, destaques e verificação interna de reposição */
+  function tick() {
+    relogio();
+    if (!db) return;
+    for (const p of PIZZAS) {
+      const e = S.estoque[p.id];
+      if (e && (Number(e.disponivel) || 0) === 0 && (!e.zeradoEm || agoraServidor() - e.zeradoEm >= REPOSICAO_MS)) reporPizza(p.id);
+    }
+    for (const [id, t] of S.novos) if (Date.now() - t > 9000) S.novos.delete(id);
+    agendarRender();
+  }
+
+  /* ============================================================================
+     14) INICIALIZAÇÃO
+     ============================================================================ */
+  function iniciar() {
+    $("#marcaNome").textContent = NOME_RESTAURANTE;
+    $("#linkCliente").textContent = location.origin + location.pathname;
+    $("#linkOperacao").textContent = location.origin + location.pathname + "#operacao";
+    montarFiltros(); montarDemo(); atualizarBotaoSom(); ligarEventos(); relogio();
+    document.querySelectorAll("[data-visao]").forEach(x => x.setAttribute("aria-pressed", String(x.dataset.visao === S.visao)));
+    trocarModo(S.modo);
+
+    const pendente = Object.values(firebaseConfig).some(v => typeof v !== "string" || !v.trim() || v.includes("COLE_AQUI"));
+    if (pendente) { console.warn("[operação] Preencha o firebaseConfig."); abrir("telaConfig"); return; }
+    try { db = getDatabase(initializeApp(firebaseConfig)); }
+    catch (e) { console.error("[operação] Falha ao iniciar o Firebase. Verifique o firebaseConfig.", e); abrir("telaConfig"); return; }
+    ouvir();
+    setInterval(tick, 5000);
+  }
+  iniciar();
+
+}
+
+/* ---------------------------------------------------------------------------
+   Inicialização: coloca a tela escolhida na página e inicia a aplicação dela.
+   --------------------------------------------------------------------------- */
+const tpl = document.getElementById(MODO_OPERACAO ? "tpl-operacao" : "tpl-cliente");
+document.body.appendChild(tpl.content.cloneNode(true));
+document.title = MODO_OPERACAO ? "Operação | Rodízio" : "Cardápio da mesa | Rodízio";
+if (MODO_OPERACAO) appOperacao(); else appCliente();
+</script>
+</body>
+</html>
